@@ -1,0 +1,280 @@
+<!DOCTYPE html><html lang="ru" data-theme="light"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fbfaf7"><meta name="robots" content="noindex,nofollow"><title>Библиотека · Mathematical Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;650;700&family=STIX+Two+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>:root {
+  --paper: #fbfaf7;
+  --card: #fffefa;
+  --ink: #202b35;
+  --muted: #6c777d;
+  --faint: #929b9d;
+  --line: #e4e4df;
+  --deep: #1c3545;
+  --accent: #a34d38;
+  --accent-soft: #f7ebe5;
+  --theorem: #f1f4f3;
+  --theorem-border: #8ca19c;
+  --rail: #f7f7f3;
+  --sans: 'DM Sans', 'Arial', sans-serif;
+  --serif: 'STIX Two Text', 'Iowan Old Style', Georgia, serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+html[data-theme='dark'] {
+  --paper: #161e24;
+  --card: #1d282e;
+  --ink: #e7e7df;
+  --muted: #acb4b4;
+  --faint: #879294;
+  --line: #334047;
+  --deep: #dfe9ec;
+  --accent: #e3a28a;
+  --accent-soft: #40302b;
+  --theorem: #222f34;
+  --theorem-border: #799892;
+  --rail: #19242a;
+}
+* {box-sizing:border-box}
+html {scroll-behavior:smooth; scroll-padding-top:105px}
+body {margin:0; min-width:0; background:var(--paper); color:var(--ink); font-family:var(--serif); font-size:18px; line-height:1.76; -webkit-font-smoothing:antialiased}
+a {color:inherit; text-underline-offset:3px; text-decoration-color: #9da6a3}
+a:hover {color:var(--accent); text-decoration-color:var(--accent)}
+button {font:inherit}
+::selection {background:#d9ddd8}
+.progress {height:3px; background:var(--accent); transform-origin:left; transform:scaleX(0); position:fixed; z-index:30; top:0; left:0; right:0; pointer-events:none}
+.site-header {height:73px; display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid var(--line); padding:0 46px; position:sticky; top:0; z-index:20; background:var(--paper); font-family:var(--sans)}
+.brand {display:inline-flex; align-items:center; gap:12px; text-decoration:none !important; white-space:nowrap; color:var(--deep)}
+.brand-mark {width:30px; height:30px; background:var(--deep); color:var(--paper); display:grid; place-items:center; font-size:18px; font-family:var(--serif); font-weight:700; line-height:1}
+.brand-text {font-size:16px; font-weight:650; letter-spacing:-.02em}
+.brand-sub {font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-left:4px; font-weight:500}
+.header-nav {display:flex; align-items:center; gap:30px}
+.header-nav a {text-decoration:none; font-size:12px; font-weight:650; letter-spacing:.04em; color:var(--muted)}
+.header-nav a.active, .header-nav a:hover {color:var(--ink)}
+.icon-btn {border:1px solid var(--line); background:transparent; color:var(--ink); cursor:pointer; width:34px; height:34px; display:grid; place-items:center; border-radius:50%; font-family:var(--sans); font-size:16px}
+.icon-btn:hover {border-color:var(--accent); color:var(--accent)}
+.mobile-nav-btn {display:none}
+.article-grid {max-width:1550px; margin:auto; display:grid; grid-template-columns:240px minmax(0, 1fr) 240px; gap:0}
+.left-rail {border-right:1px solid var(--line); background:var(--rail); padding:68px 26px 45px 28px; min-height:calc(100vh - 73px)}
+.left-rail-sticky {position:sticky; top:124px}
+.rail-title {font-family:var(--sans); text-transform:uppercase; font-size:10px; font-weight:750; color:var(--faint); letter-spacing:.16em; margin-bottom:18px}
+.rail-section {font-family:var(--sans); font-size:12px; color:var(--muted); line-height:1.55; padding-bottom:15px; border-bottom:1px solid var(--line); margin-bottom:18px}
+.rail-link {font-family:var(--sans); display:block; text-decoration:none; font-size:12px; line-height:1.5; color:var(--muted); padding:10px 10px 10px 13px; margin-left:-13px; border-left:2px solid transparent}
+.rail-link.selected {border-left-color:var(--accent); color:var(--ink); font-weight:650; background:var(--accent-soft)}
+.rail-muted {font-size:11px; font-family:var(--sans); color:var(--faint); line-height:1.7; margin-top:28px}
+.right-rail {border-left:1px solid var(--line); padding:68px 34px 55px 28px}
+.right-rail-sticky {position:sticky; top:122px; max-height:calc(100vh - 160px); overflow-y:auto; scrollbar-width:thin}
+.right-toc a {font:500 12px/1.55 var(--sans); display:block; padding:7px 8px 7px 11px; margin-left:-12px; text-decoration:none; color:var(--muted); border-left:2px solid transparent}
+.right-toc a:hover,.right-toc a.toc-current {color:var(--ink); border-left-color:var(--accent)}
+.right-toc a.level-3 {font-size:11px; padding-left:21px; opacity:.9}
+.side-bottom {margin-top:36px; padding-top:24px; border-top:1px solid var(--line); font:12px/1.6 var(--sans); color:var(--muted)}
+.side-bottom a {color:var(--accent)}
+.main-column {min-width:0; overflow-wrap:break-word; padding:62px 77px 140px 78px}
+.breadcrumb {font:600 11px/1.5 var(--sans); color:var(--muted); display:flex; flex-wrap:wrap; gap:9px; align-items:center; letter-spacing:.025em}
+.breadcrumb a {text-decoration:none}
+.breadcrumb .sep {color:var(--faint)}
+.article-meta {font:700 11px/1.5 var(--sans); color:var(--accent); text-transform:uppercase; letter-spacing:.12em; margin-top:43px}
+.article-title {font:500 clamp(34px,3.1vw,49px)/1.18 var(--serif); letter-spacing:-.027em; max-width:760px; color:var(--deep); margin:16px 0 15px}
+.article-subtitle {font:400 19px/1.55 var(--serif); color:var(--muted); margin:0; max-width:650px}
+.article-details {margin:26px 0 35px; display:flex; align-items:center; gap:11px; flex-wrap:wrap; font:600 11px/1.4 var(--sans); color:var(--muted)}
+.article-details .dot {color:var(--faint)}
+.article-details a {text-decoration:none; color:var(--accent)}
+.main-rule {height:1px; background:var(--line); margin:0 0 35px}
+.article-body {font-family:var(--serif); min-width:0; max-width:100%}
+.article-body p {margin:0 0 1.1em; text-wrap:pretty}
+.article-body > p:first-child {font-size:19px; line-height:1.7}
+.article-body h2 {color:var(--deep); font-weight:550; font-size:29px; letter-spacing:-.023em; line-height:1.3; border-top:1px solid var(--line); padding-top:46px; margin:66px 0 23px}
+.article-body h3 {font-size:22px; font-weight:560; line-height:1.4; color:var(--deep); margin:43px 0 17px}
+.article-body h2 .header-anchor,.article-body h3 .header-anchor {text-decoration:none; margin-left:8px; color:var(--faint); opacity:0; font:500 16px var(--sans)}
+.article-body h2:hover .header-anchor,.article-body h3:hover .header-anchor {opacity:1}
+/* Mathematical displays should NEVER enlarge the viewport. Scroll only their own line. */
+.article-body .math.display {display:block; box-sizing:border-box; width:100%; max-width:100%; min-width:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; padding:10px 9px 13px; margin:19px 0 23px; font-size:1.02em; scrollbar-width:thin; scrollbar-color:var(--theorem-border) transparent}
+.article-body .math.display > mjx-container {width:max-content !important; min-width:100%; max-width:none !important; overflow:visible !important; text-align:center; margin:0 !important}
+.article-body .math.display > mjx-container > svg {max-width:none !important}
+.article-body .math.inline {max-width:100%}
+.article-body .math.inline > mjx-container {max-width:100%; vertical-align:middle}
+/* Also works when MathJax uses CHTML on other deployments. */
+.article-body mjx-container[jax="CHTML"][display="true"] {margin:0 !important; padding:7px 0; overflow:visible}
+.article-body .theorem, .article-body .lemma {border:1px solid var(--theorem-border); background:var(--theorem); padding:23px 25px 8px; margin:26px 0 29px; border-radius:3px; position:relative}
+.article-body .theorem:before, .article-body .lemma:before {content:'THEOREM'; display:block; font:750 9px/1 var(--sans); letter-spacing:.16em; color:var(--muted); margin-bottom:13px}
+.article-body .lemma:before {content:'LEMMA'}
+.article-body .theorem p:first-child strong, .article-body .lemma p:first-child strong {font-weight:650; color:var(--deep)}
+.article-body .insight {border-left:3px solid var(--accent); background:var(--accent-soft); padding:18px 23px 4px; margin:24px 0 32px; font-size:16.5px; line-height:1.7}
+.article-body .insight strong {font-family:var(--sans); font-size:14px; font-weight:750}
+/* Collapsible proof panels -- native HTML details, available without JS. */
+.article-body .proof-fold {border:1px solid var(--line); background:var(--card); border-radius:8px; margin:23px 0 34px; overflow:hidden}
+.article-body .proof-fold-summary {list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; min-height:60px; padding:16px 21px; font:600 13px/1.5 var(--sans); color:var(--deep); background:var(--rail); user-select:none}
+.article-body .proof-fold-summary::-webkit-details-marker {display:none}
+.article-body .proof-fold-summary::marker {content:''}
+.article-body .proof-fold-summary:hover {background:var(--accent-soft)}
+.article-body .proof-fold-summary:focus-visible {outline:3px solid var(--accent); outline-offset:-3px}
+.article-body .proof-fold-title {font-size:14px; font-weight:700}
+.article-body .proof-fold-toggle {display:inline-flex; align-items:center; gap:11px; color:var(--accent); font-size:11px; font-weight:700; white-space:nowrap}
+.article-body details[open] .when-closed, .article-body details:not([open]) .when-open {display:none}
+.article-body .fold-chevron {height:9px; width:9px; border:solid var(--accent); border-width:0 2px 2px 0; transform:rotate(45deg); transition:transform .16s ease; margin:0 3px 4px 0}
+.article-body details[open] > summary .fold-chevron {transform:rotate(225deg); margin:5px 3px 0 0}
+.article-body .proof-fold-body {padding:1px 24px 12px}
+.article-body .proof-fold-body > :first-child {margin-top:22px}
+.article-body .proof-fold-body > :last-child {margin-bottom:10px}
+.article-body .section-fold .proof-fold-body > h3:first-child {margin-top:25px}
+.article-body .lemma-fold {margin:22px 0 25px; border-color:var(--theorem-border)}
+.article-body .lemma-fold > summary {background:var(--theorem)}
+.article-body .lemma-fold .proof-fold-body {padding-left:24px; border-left:3px solid var(--theorem-border)}
+
+.article-body .proof {padding-left:22px; border-left:1px solid var(--line); margin:20px 0 30px}
+.article-body .proof > p:first-child strong {font-family:var(--serif); font-style:italic}
+.article-body .remark {border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:16px 0 6px; margin:24px 0 29px; color:var(--muted); font-size:16.5px}
+.article-body ol {margin-top:10px; padding-left:26px; font-size:16px; line-height:1.7}
+.article-body li {padding-left:7px; margin-bottom:11px}
+.article-body ol li::marker {font-family:var(--sans); font-size:11px; color:var(--accent)}
+.article-body .theorem .math.display,.article-body .lemma .math.display {margin-bottom:22px}
+.article-bottom {border-top:1px solid var(--line); margin-top:86px; padding-top:26px; font:13px/1.65 var(--sans); color:var(--muted)}
+.article-bottom a {color:var(--accent)}
+.page-footer {padding:32px 45px; border-top:1px solid var(--line); font:11px/1.6 var(--sans); color:var(--muted); display:flex; justify-content:space-between; gap:20px}
+.page-footer a {text-decoration:none}
+/* Library landing page */
+.landing {max-width:1030px; margin:0 auto; padding:95px 48px 150px}
+.eyebrow {font:750 11px/1.5 var(--sans); color:var(--accent); text-transform:uppercase; letter-spacing:.18em}
+.landing h1 {font:500 clamp(48px,6vw,86px)/1.11 var(--serif); letter-spacing:-.045em; color:var(--deep); max-width:790px; margin:20px 0 21px}
+.landing-intro {max-width:670px; font-size:22px; line-height:1.62; color:var(--muted)}
+.landing-rule {border:0; border-top:1px solid var(--line); margin:74px 0 23px}
+.landing-row-label {font:750 11px/1.5 var(--sans); text-transform:uppercase; letter-spacing:.15em; color:var(--muted); margin-bottom:23px; display:flex; justify-content:space-between}
+.essay-entry {display:grid; grid-template-columns:1fr 130px; gap:20px; padding:30px 0 31px; border-bottom:1px solid var(--line)}
+.essay-entry a {text-decoration:none}
+.essay-title {font:550 32px/1.3 var(--serif); letter-spacing:-.017em; margin:0 0 9px}
+.essay-title a:hover {color:var(--accent)}
+.essay-desc {max-width:660px; font-size:16.5px; color:var(--muted); line-height:1.7; margin:0 0 13px}
+.essay-tags {font:650 10px/1.6 var(--sans); text-transform:uppercase; letter-spacing:.07em; color:var(--accent)}
+.essay-entry .essay-index {font:400 45px var(--serif); color:var(--faint); text-align:right}
+.empty-library {font:14px/1.7 var(--sans); color:var(--muted); margin-top:44px; max-width:670px}
+@media(max-width:1350px) {
+ .article-grid {grid-template-columns:195px minmax(0, 1fr) 215px}
+ .left-rail {padding:60px 18px 35px 24px}
+ .main-column {padding:55px 58px 110px}
+ .right-rail {padding:59px 18px}
+}
+@media(max-width:1130px) {
+ .article-grid {grid-template-columns:188px minmax(0, 1fr)}
+ .right-rail {display:none}
+ .main-column {padding:55px clamp(32px,6vw,78px) 100px}
+}
+@media(max-width:750px) {
+ body {font-size:17px}
+ .site-header {height:63px; padding:0 21px}
+ .brand-sub {display:none}
+ .header-nav {gap:12px}
+ .header-nav a {display:none}
+ .mobile-nav-btn {display:grid}
+ .article-grid {display:block}
+ .left-rail {display:none; position:fixed; z-index:16; top:63px; left:0; width:280px; max-width:80vw; min-height:calc(100vh - 63px); box-shadow:10px 15px 40px #0002; padding:32px 25px}
+ .left-rail.open {display:block}
+ .left-rail-sticky {position:static}
+ .main-column {padding:34px 23px 82px}
+ .article-meta {margin-top:30px}
+ .article-title {font-size:37px}
+ .article-subtitle {font-size:17px}
+ .article-body h2 {font-size:26px}
+ .article-body h3 {font-size:20px}
+ .article-body .theorem, .article-body .lemma {padding:21px 17px 6px}
+ .article-body .proof-fold-summary {padding:14px 14px}
+ .article-body .proof-fold-body {padding:1px 15px 12px}
+ .article-body .proof-fold-title {font-size:13px}
+ .article-body .proof-fold-toggle {font-size:10px}
+ .article-body .math.display {font-size:.9em; padding:10px 6px 13px}
+ .article-body .math.inline {display:inline-block; vertical-align:middle; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; max-width:100%; white-space:nowrap; scrollbar-width:thin}
+ .main-column {border-top:3px solid var(--accent)}
+ .article-title {border-left:3px solid var(--accent); padding-left:13px; font-size:clamp(30px, 8.4vw, 37px)}
+ .article-body h2 {border-top:1px solid var(--line); border-left:3px solid var(--accent); padding-left:13px; background:linear-gradient(90deg, var(--accent-soft), transparent 55%)}
+ .article-body .theorem, .article-body .lemma {border-left:3px solid var(--theorem-border); background:var(--theorem)}
+ .article-body .proof-fold-summary {border-left:3px solid var(--accent)}
+ .landing {padding:67px 25px 95px}
+ .landing h1 {font-size:51px}
+ .landing-intro {font-size:19px}
+ .essay-entry {grid-template-columns:1fr 40px}
+ .essay-title {font-size:27px}
+ .essay-entry .essay-index {font-size:27px}
+ .page-footer {padding:30px 23px}
+}
+@media print {
+ :root {--paper:white;--ink:black;--deep:black}
+ body {background:white;font-size:11pt}
+ .site-header,.left-rail,.right-rail,.progress,.article-bottom,.page-footer {display:none !important}
+ .article-grid {display:block}
+ .main-column {padding:0; max-width:none}
+ .article-title {font-size:26pt}
+ .article-body h2 {break-after:avoid}
+ .article-body .theorem,.article-body .lemma,.article-body .insight {break-inside:avoid}
+ .article-body .proof-fold-summary {display:none}
+ .article-body .proof-fold-body {display:block !important; padding:0; border:0}
+}
+
+/* Critical for mobile: SVG and HTML math never set the page width. */
+.article-body .theorem,.article-body .lemma,.article-body .proof-fold,.article-body .proof-fold-body {min-width:0; max-width:100%}
+.article-body img,.article-body svg:not(mjx-container svg) {max-width:100%; height:auto}
+@media(max-width:380px) {
+ .site-header {padding:0 13px}
+ .brand-text {font-size:14px}
+ .header-nav {gap:8px}
+ .main-column {padding:28px 14px 65px}
+ .article-body .math.display {font-size:.85em}
+ .article-body .proof-fold-summary {gap:4px}
+ .article-body .proof-fold-toggle {font-size:10px}
+ .page-footer {padding:22px 14px; flex-wrap:wrap}
+}
+
+/* === Browser editor (hidden during ordinary reading) === */
+#edit-toolbar[hidden] {display:none!important}
+#edit-toolbar {position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:800;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 20px);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 13px;box-shadow:0 9px 40px #0002;color:var(--ink);white-space:nowrap}
+#edit-toolbar button,.block-tools button,.editor-actions button {font-family:inherit;border:1px solid var(--line);background:var(--paper);border-radius:8px;color:var(--ink);padding:8px 12px;font-size:12px;cursor:pointer}
+#edit-toolbar button:hover,.block-tools button:hover,.editor-actions button:hover{background:var(--accent-soft)}
+.editor-pill {font-family:var(--sans, sans-serif);font-weight:700;letter-spacing:.02em;font-size:12px;color:var(--accent);}
+.block-tools {display:none;position:absolute;right:5px;top:5px;gap:5px;z-index:4}
+.ml-edit-mode .editable-block {position:relative;outline:1px dashed transparent;outline-offset:5px}
+.ml-edit-mode .editable-block:hover,.ml-edit-mode .editable-block:focus-within {outline-color:var(--accent)}
+.ml-edit-mode .block-tools {display:flex;opacity:.25;transition:opacity .15s}
+.ml-edit-mode .editable-block:hover>.block-tools,.ml-edit-mode .editable-block:focus-within>.block-tools{opacity:1}
+.ml-edit-mode .block-tools button {padding:4px 8px;font-size:11px;box-shadow:0 2px 8px #0001}
+.article-editable>.editable-block:first-child h1{font-size:clamp(30px,3.5vw,49px);line-height:1.18;font-weight:600;letter-spacing:-.035em;margin:18px 0 16px}
+.article-editable>.editable-block:nth-child(2)>p{color:var(--muted);font-size:18px}
+.article-editable>.editable-block{min-width:0}
+.article-editable .editable-block .theorem,.article-editable .editable-block .lemma {margin-top:12px}
+.article-editable .editable-block:has(>h2){margin-top:12px}
+#edit-dialog,#new-dialog,#connect-dialog {width:min(890px,calc(100vw - 22px));max-height:92vh;overflow:auto;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:16px;padding:22px 24px;box-shadow:0 25px 90px #0005}
+#new-dialog,#connect-dialog {width:min(530px,calc(100vw - 22px))}
+dialog::backdrop {background:#11192899;backdrop-filter:blur(3px)}
+.editor-modal-head {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.editor-modal-head h2 {font-family:var(--sans,sans-serif);font-size:19px;margin:0;font-weight:650}
+.editor-modal-head .x-close {background:transparent;border:0;font-size:28px;line-height:1;cursor:pointer;color:var(--ink)}
+#edit-dialog label,#new-dialog label,#connect-dialog label {display:block;font-family:var(--sans,sans-serif);font-size:12px;font-weight:700;margin:14px 0 5px}
+#edit-dialog textarea,#new-dialog input,#connect-dialog input {display:block;width:100%;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;box-sizing:border-box}
+#edit-dialog textarea {font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.65;resize:vertical;min-height:200px}
+#edit-hint,#connect-dialog p,#new-dialog p{font-size:13px;color:var(--muted);line-height:1.5}
+.editor-preview-label {font-family:var(--sans,sans-serif);font-size:12px;font-weight:700;margin:15px 0 5px;color:var(--muted)}
+#edit-preview {border:1px solid var(--line);border-radius:8px;padding:14px;min-height:60px;overflow-x:auto;font-size:15px}
+#edit-preview h1,#edit-preview h2,#edit-preview h3 {margin-top:0;font-size:1.3em}
+#edit-preview .math {max-width:100%;overflow-x:auto}
+#edit-error,#new-error,#connect-error {font-size:12px;min-height:14px}
+.editor-actions {display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:16px}
+.editor-actions .primary-editor {background:var(--accent);color:white;border-color:var(--accent)}
+.editor-actions .primary-editor:hover {filter:brightness(.94);background:var(--accent)}
+.drafts-heading {font-size:18px;margin:34px 0 12px}
+.draft-entry {border-top:1px solid var(--line);padding:12px 0;display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.draft-entry span {color:var(--muted);font-size:12px}
+@media(max-width:620px){#edit-toolbar{bottom:8px;gap:4px;padding:7px}#edit-toolbar .editor-pill{display:none}#edit-toolbar button{padding:7px;font-size:11px}#edit-dialog,#new-dialog,#connect-dialog{padding:17px}.ml-edit-mode .block-tools {opacity:.72}.editor-actions{justify-content:stretch}.editor-actions button{flex:1}}
+@media print {#edit-toolbar,.block-tools {display:none!important}}
+</style>
+<script>window.MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']],tags:'ams',packages:{'[+]':['ams']}},options:{skipHtmlTags:['script','noscript','style','textarea','pre','code']},svg:{fontCache:'local',scale:1}};</script>
+<script defer src="assets/vendor/mathjax-tex-svg.js"></script>
+<script defer src="assets/site.js"></script>
+<script defer src="assets/editor.js"></script>
+</head><body>
+<div class="progress" aria-hidden="true"></div>
+<header class="site-header"><a class="brand" href="index.html"><span class="brand-mark">M</span><span class="brand-text">Mathematical Library</span><span class="brand-sub">/ essays</span></a>
+<nav class="header-nav"><a href="index.html">Библиотека</a><button type="button" class="icon-btn" data-theme-toggle aria-label="Тёмная тема">☾</button><button class="icon-btn mobile-nav-btn" type="button" data-nav-toggle aria-label="Содержание">☰</button></nav></header>
+<main class="landing"><div class="eyebrow">A personal collection of mathematics</div><h1>Mathematics, collected.</h1><p class="landing-intro">Развёрнутые заметки о математических идеях, доказательствах и связях между ними.</p><hr class="landing-rule"><div class="landing-row-label"><span>Библиотека</span><span>1 essays</span></div><div class="essay-entry"><div><h2 class="essay-title"><a href="articles/coarse-group-cohomology.html">Грубые когомологии группы и когомологии с коэффициентами в групповом кольце</a></h2><p class="essay-desc">Развёрнутый математический текст · Математические заметки</p></div><div class="essay-index">01</div></div><div id="local-drafts"></div></main>
+<footer class="page-footer"><span>Mathematical Library · prototype editor</span><span>Editing: Ctrl+Shift+E or ?edit=1</span></footer>
+<!-- Editor stays invisible in reading mode. No GitHub token is stored in the website. -->
+<div id="edit-toolbar" hidden><span class="editor-pill">✎ Режим редактирования</span><button type="button" data-action="new-article">＋ Статья</button><button type="button" data-action="connect">GitHub</button><button type="button" data-action="exit-edit">Готово</button></div>
+<dialog id="edit-dialog"><form method="dialog" id="edit-form"><div class="editor-modal-head"><h2 id="edit-dialog-title">Edit block</h2><button type="button" class="x-close" data-action="close-dialog" aria-label="Закрыть">×</button></div><p id="edit-hint"></p><label for="edit-source">Математический исходный текст (Markdown + LaTeX)</label><textarea id="edit-source" spellcheck="false" rows="13"></textarea><p class="editor-preview-label">Предпросмотр (упрощённый; окончательный HTML строится Pandoc)</p><div id="edit-preview" class="article-body" aria-live="polite"></div><p id="edit-error" role="status"></p><div class="editor-actions"><button type="button" data-action="save-draft">Сохранить черновик</button><button type="button" class="primary-editor" data-action="publish">Опубликовать в GitHub</button></div></form></dialog>
+<dialog id="new-dialog"><div class="editor-modal-head"><h2>Новая статья</h2><button type="button" class="x-close" data-action="close-dialog">×</button></div><label for="new-title">Название</label><input id="new-title" placeholder="Например, Концы групп"><label for="new-slug">Адрес (латиницей)</label><input id="new-slug" placeholder="ends-of-groups"><label for="new-category">Раздел</label><input id="new-category" value="Geometry"/><p id="new-error" role="status"></p><div class="editor-actions"><button type="button" data-action="create-local">Создать черновик</button><button class="primary-editor" type="button" data-action="create-publish">Создать и опубликовать</button></div></dialog>
+<dialog id="connect-dialog"><div class="editor-modal-head"><h2>Подключение GitHub</h2><button type="button" class="x-close" data-action="close-dialog">×</button></div><p>Для публикации укажите свой репозиторий и fine-grained access token с правом <b>Contents: Read and write</b> только для этого репозитория.</p><label for="gh-owner">GitHub username</label><input id="gh-owner" autocomplete="username"><label for="gh-repo">Имя репозитория</label><input id="gh-repo" value="math-library"><label for="gh-branch">Ветка</label><input id="gh-branch" value="main"><label for="gh-token">Token — используется только в текущей вкладке, не сохраняется</label><input id="gh-token" type="password" autocomplete="off"><p id="connect-error" role="status"></p><div class="editor-actions"><button type="button" data-action="clear-token">Отключить</button><button class="primary-editor" type="button" data-action="save-connection">Подключить</button></div></dialog>
+</body></html>
