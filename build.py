@@ -68,7 +68,7 @@ def annotate_if_needed(path: Path) -> list[dict]:
 
 def pandoc(source: str) -> str:
     p = subprocess.run(['pandoc', '-f', 'markdown+tex_math_dollars+fenced_divs-raw_html+auto_identifiers',
-                        '-t','html5','--wrap=none'], input=source, text=True,
+                        '-t','html5','--mathjax','--wrap=none'], input=source, text=True,
                        capture_output=True, check=True)
     return p.stdout.strip()
 
