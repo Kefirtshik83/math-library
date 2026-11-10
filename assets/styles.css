@@ -320,13 +320,20 @@ dialog::backdrop {background:#11192899;backdrop-filter:blur(3px)}
 .rail-control:not(.enabled){display:none}
 .rail-scrim{display:none}
 /* The text column retains its comfortable measure even with hidden sidebars. */
+/* Keep each grid child in its own track when a sidebar is display:none.
+   Without explicit placement, CSS Grid auto-places the article in the
+   collapsed first track, causing a one-character-wide text column. */
 .article-grid{transition:grid-template-columns .18s ease}
-.article-grid .main-column{width:100%;max-width:1000px;justify-self:center}
+.article-grid > .left-rail{grid-column:1}
+.article-grid > .main-column{grid-column:2;width:100%;max-width:1000px;justify-self:center}
+.article-grid > .right-rail{grid-column:3}
 body.rail-left-hidden .article-grid{grid-template-columns:0 minmax(0,1fr) 240px}
 body.rail-right-hidden .article-grid{grid-template-columns:240px minmax(0,1fr) 0}
 body.rail-left-hidden.rail-right-hidden .article-grid{grid-template-columns:0 minmax(0,1fr) 0}
 body.rail-left-hidden .left-rail,body.rail-right-hidden .right-rail{display:none}
 .collection-layout{transition:grid-template-columns .18s ease}
+.collection-layout > .collection-rail{grid-column:1}
+.collection-layout > .collection-main{grid-column:2}
 body.rail-left-hidden .collection-layout{grid-template-columns:0 minmax(0,1fr)}
 body.rail-left-hidden .collection-rail{display:none}
 .landing{padding-top:70px}
