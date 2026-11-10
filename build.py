@@ -3,7 +3,9 @@
 Requires Python 3 and Pandoc. Run `python build.py`.
 """
 from __future__ import annotations
-import html, json, re, subprocess, uuid
+import html, json, re, subprocess, uuid, hashlib
+from urllib.parse import urlsplit
+from content_safety import sanitize, validate_blocks, validate_collections, slug as safe_slug, MAX_BYTES
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -13,6 +15,11 @@ COLL_OUT = ROOT / 'collections'
 COLLECTIONS_FILE = ROOT / 'collections.json'
 COLLECTION_META_RE = re.compile(r'^<!-- ml:collection:([a-z0-9-]+) -->\s*\n(?:\s*\n)?')
 ASSET = ROOT / 'assets'
+PUBLISHER = json.loads((ROOT/'site-config.json').read_text(encoding='utf-8')).get('publisherOrigin','')
+if PUBLISHER:
+    parsed=urlsplit(PUBLISHER)
+    if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
+        raise ValueError('publisherOrigin must be an HTTPS origin')
 MARKER_RE = re.compile(r'^<!-- ml:block:([a-zA-Z0-9_-]+) -->\s*\n', re.M)
 FOLD_START = re.compile(r'^<!-- ml:fold-start title="([^"]+)" open="(true|false)" -->$')
 FOLD_END = '<!-- ml:fold-end -->'
@@ -41,13 +48,17 @@ def fold_open(block_id: str, title: str, opened: bool) -> str:
 
 
 def validate_folds(blocks: list[dict]) -> None:
+    validate_blocks(blocks)
     stack = []
     ids = set()
     for b in blocks:
         if b['id'] in ids: raise ValueError('Duplicate block id: '+b['id'])
         ids.add(b['id'])
         directive=fold_directive(b['source'])
-        if directive and directive[0]=='start': stack.append(b['id'])
+        if directive and directive[0]=='start':
+            stack.append(b['id'])
+            if len(stack)>12: raise ValueError('Too many nested folds')
+        if '<!-- ml:fold-' in b['source'] and not directive: raise ValueError('Invalid fold marker')
         if directive and directive[0]=='end':
             if not stack: raise ValueError('Closing panel without opening marker: '+b['id'])
             stack.pop()
@@ -95,6 +106,8 @@ def split_unmarked(text: str) -> list[str]:
 
 
 def annotate_if_needed(path: Path) -> tuple[list[dict],str,bool]:
+    safe_slug(path.stem)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size>MAX_BYTES: raise ValueError('Invalid note file')
     text = path.read_text(encoding='utf-8')
     collection_match = COLLECTION_META_RE.match(text)
     collection_id = collection_match.group(1) if collection_match else 'mathematical-notes'
@@ -114,7 +127,9 @@ def annotate_if_needed(path: Path) -> tuple[list[dict],str,bool]:
 
 
 def load_collections() -> list[dict]:
+    if COLLECTIONS_FILE.is_symlink() or COLLECTIONS_FILE.stat().st_size>MAX_BYTES: raise ValueError('Invalid collections file')
     items=json.loads(COLLECTIONS_FILE.read_text(encoding='utf-8'))
+    validate_collections(items)
     if not isinstance(items,list):raise ValueError('collections.json must contain a list')
     ids=set()
     for c in items:
@@ -174,10 +189,10 @@ def article_list(records: list[dict], base: str='') -> str:
 
 
 def pandoc(source: str) -> str:
-    p = subprocess.run(['pandoc', '-f', 'markdown+tex_math_dollars+tex_math_single_backslash+fenced_divs-raw_html+auto_identifiers',
+    p = subprocess.run(['pandoc', '-f', 'markdown+tex_math_dollars+tex_math_single_backslash+fenced_divs-raw_html-raw_attribute+auto_identifiers',
                         '-t','html5','--mathjax','--wrap=none'], input=source, text=True,
-                       capture_output=True, check=True)
-    return p.stdout.strip()
+                       capture_output=True, check=True, timeout=15)
+    return sanitize(p.stdout.strip())
 
 
 def fold_proof(markup: str) -> str:
@@ -211,14 +226,18 @@ def js_json(value) -> str:
 def page(title: str, body: str, base: str = '', collections=None, active_collection: str = '') -> str:
     css = (ASSET/'styles.css').read_text(encoding='utf-8')
     return f'''<!DOCTYPE html><html lang="ru" data-theme="light"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+<meta name="referrer" content="no-referrer"><meta name="ml-publisher" content="{esc(PUBLISHER)}"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#fbfaf7"><meta name="ml-collection" content="{esc(active_collection)}"><meta name="robots" content="noindex,nofollow"><title>{html.escape(title)} · Некоторые заметки</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;650;700&family=STIX+Two+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{css}</style>
-<script>window.MathJax={{tex:{{inlineMath:[['$','$'],['\\\\(','\\\\)']],displayMath:[['$$','$$'],['\\\\[','\\\\]']],tags:'ams',packages:{{'[+]':['ams']}}}},options:{{skipHtmlTags:['script','noscript','style','textarea','pre','code']}},svg:{{fontCache:'local',scale:1}}}};</script>
+<script defer src="{base}assets/mathjax-config.js"></script>
 <script defer src="{base}assets/vendor/mathjax-tex-svg.js"></script>
 <script defer src="{base}assets/site.js"></script>
+<script defer src="{base}assets/vendor/dompurify.min.js"></script>
+<script defer src="{base}assets/content-policy.js"></script>
+<script defer src="{base}assets/publisher.js"></script>
 <script defer src="{base}assets/editor.js"></script>
 </head><body>
 <div class="progress" aria-hidden="true"></div>
@@ -228,8 +247,8 @@ def page(title: str, body: str, base: str = '', collections=None, active_collect
 {body}
 <script id="ml-collections-data" type="application/json">{js_json(collections or [])}</script>
 <footer class="page-footer"><span>Некоторые заметки</span></footer>
-<!-- Editor stays invisible in reading mode. No GitHub token is stored in the website. -->
-<div id="edit-toolbar" hidden><span class="editor-pill">✎ Режим редактирования</span><button type="button" data-action="new-article">＋ Статья</button><button type="button" data-action="new-collection">＋ Раздел</button><button type="button" data-action="connect">GitHub</button><button type="button" data-action="exit-edit">Готово</button></div>
+<!-- Credentials stay on the separate publisher origin. -->
+<div id="edit-toolbar" hidden><span class="editor-pill">✎ Режим редактирования</span><button type="button" data-action="new-article">＋ Статья</button><button type="button" data-action="new-collection">＋ Раздел</button><button type="button" data-action="publish-article">Опубликовать</button><button type="button" data-action="export-draft">Экспорт</button><button type="button" data-action="discard-draft">Сбросить черновик</button><button type="button" data-action="connect">Войти / выйти</button><button type="button" data-action="exit-edit">Готово</button></div>
 <dialog id="insert-dialog"><div class="editor-modal-head"><h2>Добавить блок</h2><button type="button" class="x-close" data-action="close-dialog">×</button></div>
 <label for="insert-type">Тип нового блока</label><select id="insert-type"><option value="text">Обычный текст или формула</option><option value="theorem">Теорема</option><option value="lemma">Лемма</option><option value="proof">Сворачиваемое доказательство</option><option value="fold">Сворачиваемая плашка с любым содержимым</option><option value="link">Ссылка на отдельную статью / доказательство</option></select>
 <div id="insert-options" hidden><label for="insert-title">Название плашки или ссылка</label><input id="insert-title" value="Подробности"><div id="insert-link-options" hidden><label for="insert-slug">Адрес статьи (латиницей)</label><input id="insert-slug" placeholder="proof-of-main-theorem"><p class="editor-note">Ссылка ведёт на отдельную статью. Создать её можно кнопкой «＋ Статья».</p></div><label id="insert-open-label"><input id="insert-open" type="checkbox" checked> Изначально раскрыта</label></div>
@@ -242,7 +261,7 @@ def page(title: str, body: str, base: str = '', collections=None, active_collect
 <label for="collection-parent">Расположение</label><select id="collection-parent"></select>
 <label for="collection-description">Краткое описание (необязательно)</label><textarea id="collection-description" rows="3" placeholder="Что будет в этом разделе"></textarea>
 <p id="collection-error" role="status"></p><div class="editor-actions"><button type="button" data-action="create-collection-local">Сохранить на этом устройстве</button><button class="primary-editor" type="button" data-action="create-collection-publish">Создать и опубликовать</button></div></dialog>
-<dialog id="connect-dialog"><div class="editor-modal-head"><h2>Подключение GitHub</h2><button type="button" class="x-close" data-action="close-dialog">×</button></div><p>Для публикации укажите свой репозиторий и fine-grained access token с правом <b>Contents: Read and write</b> только для этого репозитория.</p><label for="gh-owner">GitHub username</label><input id="gh-owner" autocomplete="username"><label for="gh-repo">Имя репозитория</label><input id="gh-repo" value="math-library"><label for="gh-branch">Ветка</label><input id="gh-branch" value="main"><label for="gh-token">Token — используется только в текущей вкладке, не сохраняется</label><input id="gh-token" type="password" autocomplete="off"><p id="connect-error" role="status"></p><div class="editor-actions"><button type="button" data-action="clear-token">Отключить</button><button class="primary-editor" type="button" data-action="save-connection">Подключить</button></div></dialog>
+
 </body></html>'''
 
 
@@ -290,7 +309,7 @@ def build_article(slug: str, blocks: list[dict], collection_id: str, has_meta: b
             toc_items.append(('block-'+b['id'],plain,2 if source.startswith('## ') else 3))
     toc=''.join(f'<a href="#{target}" class="level-{level}">{esc(name)}</a>' for target,name,level in toc_items)
     raw_data={'slug':slug,'title':title,'collection':collection_id,'category':cat['title'],
-              'sourceHasMeta':has_meta,'sourceExact':(NOTES/f'{slug}.md').read_text(encoding='utf-8'),
+              'sourceHasMeta':has_meta,'sourceSha256':hashlib.sha256((NOTES/f'{slug}.md').read_bytes()).hexdigest(),'sourceExact':(NOTES/f'{slug}.md').read_text(encoding='utf-8'),
               'path':f'notes/{slug}.md','blocks':blocks}
     in_category=[r for r in records if r['collection']==collection_id and r['slug']!=slug]
     related=''.join('<a class="rail-link" href="'+esc(r['slug'])+'.html">'+esc(r['title'])+'</a>' for r in in_category[:15])
@@ -349,6 +368,7 @@ def build_draft_template(collections: list[dict]):
 
 
 def main():
+    if NOTES.is_symlink() or not NOTES.is_dir(): raise ValueError('notes must be a real directory')
     OUT.mkdir(parents=True,exist_ok=True)
     collections=load_collections()
     records=[];sources=[]

@@ -1,0 +1,22 @@
+{
+  "name": "math-library",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run worker:check && node --test tests/*.test.mjs",
+    "test:python": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
+    "build": "python3 build.py && python3 scripts/package_site.py",
+    "check": "npm run build && npm test && npm run test:python",
+    "worker:check": "node scripts/check-worker.mjs"
+  },
+  "devDependencies": {
+    "dompurify": "3.4.17",
+    "jsdom": "31.0.0",
+    "mathjax": "3.2.2",
+    "miniflare": "5.20261110.0-beta",
+    "wrangler": "4.160.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

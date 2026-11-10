@@ -379,3 +379,7 @@ body.rail-left-hidden .collection-rail{display:none}
 .collection-card{min-height:126px;padding:20px 24px;gap:8px}
 
 .collection-card .card-eyebrow:empty{display:none}
+
+/* Publishing controls remain usable on narrow screens. */
+#edit-toolbar{flex-wrap:wrap;justify-content:center;white-space:normal}
+@media(max-width:700px){#edit-toolbar{width:calc(100% - 20px);bottom:8px;gap:5px;padding:7px}#edit-toolbar button{padding:6px 8px}.editor-pill{width:100%;text-align:center}}
