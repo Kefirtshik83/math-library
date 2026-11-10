@@ -1,0 +1,36 @@
+name = "math-library-publisher"
+main = "src/worker.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = false
+
+[vars]
+# Public configuration only. Replace before deployment; the placeholders fail closed.
+PUBLISHER_ORIGIN = "https://REPLACE.workers.dev"
+SITE_ORIGIN = "https://kefirtshik83.github.io"
+SITE_URL = "https://kefirtshik83.github.io/math-library/"
+GITHUB_OWNER = "Kefirtshik83"
+GITHUB_REPO = "math-library"
+GITHUB_BRANCH = "main"
+GITHUB_OWNER_ID = "REPLACE_NUMERIC_ID"
+GITHUB_REPO_ID = "REPLACE_NUMERIC_ID"
+GITHUB_CLIENT_ID = "REPLACE_CLIENT_ID"
+# Secrets supplied later via wrangler secret put:
+# GITHUB_CLIENT_SECRET
+# SESSION_ENCRYPTION_KEY (base64 encoding of 32 random bytes)
+
+[[durable_objects.bindings]]
+name = "STATE"
+class_name = "PublisherState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PublisherState"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/publish.js"]
+fallthrough = true
