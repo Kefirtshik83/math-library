@@ -11,12 +11,63 @@
     updateThemeButton();
   });
 
-  const navButton = document.querySelector('[data-nav-toggle]');
-  const leftRail = document.querySelector('.left-rail');
-  if (navButton && leftRail) navButton.addEventListener('click', () => {
-    const open = leftRail.classList.toggle('open');
-    navButton.setAttribute('aria-expanded', String(open));
-  });
+  // Two separate reading controls. On wide screens they hide/show fixed sidebars;
+  // on tablets and phones they open accessible navigation drawers.
+  const rails = {
+    left: document.querySelector('.left-rail, .collection-rail'),
+    right: document.querySelector('.right-rail')
+  };
+  const toggles = {
+    left: document.querySelector('[data-rail-toggle="left"]'),
+    right: document.querySelector('[data-rail-toggle="right"]')
+  };
+  for (const kind of ['left','right']) {
+    if (rails[kind] && toggles[kind]) {
+      toggles[kind].classList.add('enabled');
+      // This section never needs to be reached through a visible file tree.
+      if (!rails[kind].id) rails[kind].id = kind + '-navigation';
+    }
+  }
+  const tablet = window.matchMedia('(max-width: 1199px)');
+  const closeDrawers = () => {
+    Object.values(rails).forEach(r => r?.classList.remove('open'));
+    document.body.classList.remove('drawer-open');
+    Object.values(toggles).forEach(b => b?.setAttribute('aria-expanded','false'));
+  };
+  const updateDesktopButtons = () => {
+    if (tablet.matches) {closeDrawers(); return;}
+    closeDrawers();
+    for(const kind of ['left','right']) {
+      if (rails[kind] && toggles[kind])
+        toggles[kind].setAttribute('aria-expanded',String(!document.body.classList.contains('rail-'+kind+'-hidden')));
+    }
+  };
+  for(const kind of ['left','right']) {
+    toggles[kind]?.addEventListener('click', () => {
+      if (tablet.matches) {
+        const wasOpen=rails[kind]?.classList.contains('open');
+        closeDrawers();
+        if (!wasOpen && rails[kind]) {
+          rails[kind].classList.add('open');
+          document.body.classList.add('drawer-open');
+          toggles[kind].setAttribute('aria-expanded','true');
+        }
+      } else {
+        const cls='rail-'+kind+'-hidden';
+        document.body.classList.toggle(cls);
+        try {localStorage.setItem('ml-'+cls, document.body.classList.contains(cls)?'1':'0');} catch(_) {}
+        updateDesktopButtons();
+      }
+    });
+  }
+  for (const kind of ['left','right']) {
+    try {if (localStorage.getItem('ml-rail-'+kind+'-hidden')==='1')document.body.classList.add('rail-'+kind+'-hidden');} catch(_) {}
+  }
+  document.querySelector('[data-rail-dismiss]')?.addEventListener('click',closeDrawers);
+  Object.values(rails).forEach(r=>r?.addEventListener('click',e=>{if(e.target.closest('a'))closeDrawers();}));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawers();});
+  tablet.addEventListener?.('change',updateDesktopButtons);
+  updateDesktopButtons();
 
   const progress = document.querySelector('.progress');
   if (progress) {

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "mathematical-notes",
+    "title": "Математические заметки",
+    "description": "",
+    "parent": null,
+    "order": 10
+  },
+  {
+    "id": "teaching",
+    "title": "Преподавание",
+    "description": "",
+    "parent": null,
+    "order": 20
+  },
+  {
+    "id": "measure-theory",
+    "title": "Интеграл Лебега",
+    "description": "",
+    "parent": "teaching",
+    "order": 10
+  },
+  {
+    "id": "multiple-integrals",
+    "title": "Кратные интегралы",
+    "description": "",
+    "parent": "teaching",
+    "order": 20
+  },
+  {
+    "id": "group-theory",
+    "title": "Теория групп",
+    "description": "",
+    "parent": "teaching",
+    "order": 30
+  }
+]

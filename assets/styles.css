@@ -35,7 +35,11 @@ body {margin:0; min-width:0; background:var(--paper); color:var(--ink); font-fam
 a {color:inherit; text-underline-offset:3px; text-decoration-color: #9da6a3}
 a:hover {color:var(--accent); text-decoration-color:var(--accent)}
 button {font:inherit}
-::selection {background:#d9ddd8}
+/* Explicit foreground color matters on dark themes: light-on-light selection was unreadable. */
+::selection {background:#8dc5df; color:#11232e; text-shadow:none}
+::-moz-selection {background:#8dc5df; color:#11232e; text-shadow:none}
+#edit-source::selection,#edit-preview ::selection {background:#8dc5df; color:#11232e; text-shadow:none}
+#edit-source::-moz-selection,#edit-preview ::-moz-selection {background:#8dc5df; color:#11232e; text-shadow:none}
 .progress {height:3px; background:var(--accent); transform-origin:left; transform:scaleX(0); position:fixed; z-index:30; top:0; left:0; right:0; pointer-events:none}
 .site-header {height:73px; display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid var(--line); padding:0 46px; position:sticky; top:0; z-index:20; background:var(--paper); font-family:var(--sans)}
 .brand {display:inline-flex; align-items:center; gap:12px; text-decoration:none !important; white-space:nowrap; color:var(--deep)}
@@ -90,8 +94,7 @@ button {font:inherit}
 /* Also works when MathJax uses CHTML on other deployments. */
 .article-body mjx-container[jax="CHTML"][display="true"] {margin:0 !important; padding:7px 0; overflow:visible}
 .article-body .theorem, .article-body .lemma {border:1px solid var(--theorem-border); background:var(--theorem); padding:23px 25px 8px; margin:26px 0 29px; border-radius:3px; position:relative}
-.article-body .theorem:before, .article-body .lemma:before {content:'THEOREM'; display:block; font:750 9px/1 var(--sans); letter-spacing:.16em; color:var(--muted); margin-bottom:13px}
-.article-body .lemma:before {content:'LEMMA'}
+/* Theorems use their Russian source title, with no redundant uppercase label. */
 .article-body .theorem p:first-child strong, .article-body .lemma p:first-child strong {font-weight:650; color:var(--deep)}
 .article-body .insight {border-left:3px solid var(--accent); background:var(--accent-soft); padding:18px 23px 4px; margin:24px 0 32px; font-size:16.5px; line-height:1.7}
 .article-body .insight strong {font-family:var(--sans); font-size:14px; font-weight:750}
@@ -256,3 +259,116 @@ dialog::backdrop {background:#11192899;backdrop-filter:blur(3px)}
 .draft-entry span {color:var(--muted);font-size:12px}
 @media(max-width:620px){#edit-toolbar{bottom:8px;gap:4px;padding:7px}#edit-toolbar .editor-pill{display:none}#edit-toolbar button{padding:7px;font-size:11px}#edit-dialog,#new-dialog,#connect-dialog{padding:17px}.ml-edit-mode .block-tools {opacity:.72}.editor-actions{justify-content:stretch}.editor-actions button{flex:1}}
 @media print {#edit-toolbar,.block-tools {display:none!important}}
+
+/* v7: panels are source-backed containers; their editor controls never appear
+   in ordinary reading mode. */
+.article-body .custom-fold {position:relative}
+.article-body .custom-fold .fold-editor-control {display:none;gap:3px;align-items:center}
+.ml-edit-mode .article-body .custom-fold > summary .fold-editor-control {display:inline-flex}
+.article-body .fold-editor-control button {border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);padding:4px 7px;cursor:pointer;font:600 11px/1.5 var(--sans)}
+.article-body .fold-editor-control button:hover {background:var(--accent-soft)}
+.article-body .custom-fold .proof-fold-body > .editable-block:first-child {margin-top:15px}
+#insert-dialog {width:min(560px,calc(100vw - 22px));max-height:92vh;overflow:auto;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:16px;padding:22px 24px;box-shadow:0 25px 90px #0005}
+#insert-dialog label {display:block;font-family:var(--sans,sans-serif);font-size:12px;font-weight:700;margin:14px 0 5px}
+#insert-dialog input:not([type="checkbox"]),#insert-dialog select {display:block;box-sizing:border-box;width:100%;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px}
+#insert-dialog input[type="checkbox"] {width:auto;margin-right:9px}
+#insert-dialog #insert-open-label {display:flex;align-items:center}
+#insert-dialog .editor-note {font:13px/1.5 var(--sans);color:var(--muted)}
+#insert-dialog #insert-error {min-height:14px;font-size:12px;color:#c84444}
+#insert-dialog [hidden] {display:none!important}
+#edit-dialog .editor-delete {color:var(--muted);margin-right:auto}
+#edit-dialog .editor-delete:hover {background:#bb393910;color:#9b3434}
+@media(max-width:620px){#insert-dialog{padding:17px}.article-body .fold-editor-control{flex-wrap:wrap}}
+@media print {.article-body .fold-editor-control {display:none!important}}
+
+/* v8: logical mathematical-library collections and course pages */
+.collection-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:22px 0 38px}
+.collection-card{position:relative;display:flex;flex-direction:column;gap:10px;min-height:174px;padding:25px 27px;border:1px solid var(--line);border-radius:8px;background:var(--card);text-decoration:none;transition:border-color .14s,transform .14s}
+.collection-card:hover{transform:translateY(-2px);border-color:var(--theorem-border);color:var(--ink)}
+.collection-card strong{font:500 clamp(22px,2.4vw,29px)/1.2 var(--serif);letter-spacing:-.025em;color:var(--deep)}
+.collection-card>span:nth-child(3){font:400 13px/1.55 var(--sans);color:var(--muted);max-width:43ch}
+.card-eyebrow{font:700 10px/1 var(--sans);text-transform:uppercase;color:var(--accent);letter-spacing:.13em}
+.collection-arrow{position:absolute;right:24px;top:20px;font:23px var(--serif);color:var(--accent)}
+.collection-layout{max-width:1390px;margin:0 auto;display:grid;grid-template-columns:245px minmax(0,1fr)}
+.collection-rail{padding:58px 22px 40px 28px;border-right:1px solid var(--line);background:var(--rail);min-height:calc(100vh - 73px)}
+.collection-main{min-width:0;padding:58px clamp(28px,5vw,90px) 110px;max-width:1060px}
+.collection-main .eyebrow{margin-top:46px}
+.collection-main h1{font:500 clamp(35px,4.5vw,61px)/1.13 var(--serif);letter-spacing:-.04em;margin:13px 0 18px;color:var(--deep)}
+.collection-main .landing-intro{margin:0 0 25px;max-width:650px}
+.collection-label{font:700 11px var(--sans);color:var(--muted);letter-spacing:.11em;text-transform:uppercase;margin:48px 0 8px}
+.collection-main .landing-row-label{margin-top:35px}
+.home-articles{margin-top:35px!important}
+.empty-collection{padding:24px 0 36px;font:15px/1.7 var(--sans);color:var(--muted)}
+.collection-link{padding-left:calc(13px + 12px * var(--depth))}
+.rail-subheading{margin:34px 0 12px}
+#collection-dialog{width:min(560px,calc(100vw - 22px));max-height:92vh;overflow:auto;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:16px;padding:22px 24px;box-shadow:0 25px 90px #0005}
+#collection-dialog label{display:block;font:700 12px var(--sans);margin:14px 0 5px}
+#collection-dialog input,#collection-dialog textarea,#collection-dialog select,#new-dialog select{display:block;box-sizing:border-box;width:100%;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;font:14px/1.5 var(--sans)}
+#collection-dialog #collection-error{font:12px var(--sans);min-height:12px}
+.draft-entry button{font:600 12px var(--sans);padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);cursor:pointer}
+@media(max-width:850px){.collection-layout{grid-template-columns:190px minmax(0,1fr)}.collection-rail{padding:35px 18px}.collection-main{padding:40px 25px 85px}}
+@media(max-width:750px){.collection-cards{grid-template-columns:1fr}.collection-layout{display:block}.collection-rail{display:none}.collection-main{padding:35px 23px 80px}.collection-main h1{font-size:39px}}
+@media(max-width:620px){#collection-dialog{padding:17px}#edit-toolbar{flex-wrap:wrap;justify-content:center;white-space:normal}}
+
+/* v9: understated identity and distraction-free navigation */
+.brand-text{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.site-header{padding-inline:clamp(18px,3.2vw,45px)}
+.header-nav{gap:9px}
+.rail-control{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;padding:4px 9px;font:600 11px/1.3 var(--sans)}
+.rail-control:hover,.rail-control[aria-expanded="true"]{border-color:var(--line);background:var(--rail);color:var(--ink)}
+.rail-control>span[aria-hidden]{font-size:19px;line-height:1}
+.rail-control:not(.enabled){display:none}
+.rail-scrim{display:none}
+/* The text column retains its comfortable measure even with hidden sidebars. */
+.article-grid{transition:grid-template-columns .18s ease}
+.article-grid .main-column{width:100%;max-width:1000px;justify-self:center}
+body.rail-left-hidden .article-grid{grid-template-columns:0 minmax(0,1fr) 240px}
+body.rail-right-hidden .article-grid{grid-template-columns:240px minmax(0,1fr) 0}
+body.rail-left-hidden.rail-right-hidden .article-grid{grid-template-columns:0 minmax(0,1fr) 0}
+body.rail-left-hidden .left-rail,body.rail-right-hidden .right-rail{display:none}
+.collection-layout{transition:grid-template-columns .18s ease}
+body.rail-left-hidden .collection-layout{grid-template-columns:0 minmax(0,1fr)}
+body.rail-left-hidden .collection-rail{display:none}
+.landing{padding-top:70px}
+.landing h1{font-size:clamp(33px,3.9vw,46px);letter-spacing:-.025em;margin:0 0 22px}
+.landing-rule{margin:36px 0 27px}
+.collection-main .eyebrow,.landing .eyebrow{display:none}
+.collection-main .landing-intro:empty,.collection-card>span:nth-child(3):empty{display:none}
+.collection-card>span:nth-child(3):empty{margin:0}
+/* Tablets and phones: both panels become independent accessible slide-over drawers. */
+@media(max-width:1199px){
+ .article-grid,.collection-layout{display:block!important}
+ .main-column{max-width:960px;margin-inline:auto;padding:48px clamp(24px,6vw,70px) 105px}
+ .collection-main{max-width:960px;margin-inline:auto;padding:48px clamp(24px,6vw,70px) 100px}
+ .article-grid .left-rail,.article-grid .right-rail,.collection-layout .collection-rail{display:none!important;position:fixed;top:73px;bottom:0;z-index:51;width:min(335px,86vw);max-width:86vw;min-height:0;height:calc(100dvh - 73px);overflow-y:auto;padding:26px 24px 55px;box-shadow:0 15px 45px #0003;background:var(--rail)}
+ .article-grid .left-rail,.collection-layout .collection-rail{left:0;border-right:1px solid var(--line);border-left:0}
+ .article-grid .right-rail{right:0;border-left:1px solid var(--line);background:var(--paper)}
+ .article-grid .left-rail.open,.article-grid .right-rail.open,.collection-layout .collection-rail.open{display:block!important}
+ .left-rail-sticky,.right-rail-sticky{position:static;max-height:none;overflow:visible}
+ body.drawer-open{overflow:hidden}
+ body.drawer-open .rail-scrim{display:block;position:fixed;inset:73px 0 0;z-index:50;background:#10182088;cursor:pointer}
+}
+@media(max-width:750px){
+ .site-header{height:63px}
+ .article-grid .left-rail,.article-grid .right-rail,.collection-layout .collection-rail{top:63px;height:calc(100dvh - 63px)}
+ body.drawer-open .rail-scrim{top:63px}
+ .main-column{padding:34px 23px 82px}
+ .collection-main{padding:35px 23px 80px}
+ .rail-control{padding:4px 7px;min-width:32px}
+ .rail-control-label{display:none}
+ .landing{padding-top:48px}
+ .landing h1{font-size:36px}
+}
+@media(max-width:380px){
+ .brand-text{font-size:13px}
+ .site-header{padding-inline:12px}
+ .header-nav{gap:3px}
+ .rail-control{padding:4px 5px}
+ .main-column{padding:28px 14px 65px}
+}
+@media print{.rail-control,.rail-scrim{display:none!important}}
+
+/* Cards stay compact when a collection has no description yet. */
+.collection-card{min-height:126px;padding:20px 24px;gap:8px}
+
+.collection-card .card-eyebrow:empty{display:none}
