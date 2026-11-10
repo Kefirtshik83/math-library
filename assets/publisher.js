@@ -1,80 +1,93 @@
-/* Owner publishing transport: same-page first, safe popup fallback when cookies are blocked. */
+/* v12: owner-login handoff; GitHub credentials stay on the Worker. */
 (() => {
   'use strict';
+  const VERSION='site-v12-20261111';
   function origin() {
     const value=document.querySelector('meta[name="ml-publisher"]')?.content||'';
     let url;try{url=new URL(value);}catch{throw Error('Сервис публикации не настроен.');}
-    if(url.protocol!=='https:'||url.origin!==value||url.origin===location.origin||url.username||url.password)throw Error('Неверный адрес публикации.');
+    if(url.protocol!=='https:'||url.origin!==value||url.origin===location.origin||url.username||url.password)
+      throw Error('Неверный адрес публикации.');
     return value;
   }
-  let session=null;
-  async function check() {
-    try {
-      const response=await fetch(origin()+'/api/session',{credentials:'include',mode:'cors',cache:'no-store',redirect:'error'});
-      if(!response.ok){session=null;return false;}
-      const data=await response.json();
-      if(typeof data.csrf!=='string'||!Number.isFinite(data.expires)){session=null;return false;}
-      session=data;return true;
-    } catch {session=null;return false;}
-  }
-  async function request(path,body,csrf) {
+  let authorization=null;
+  const valid=()=>!!(authorization && authorization.expires>Date.now()+30000);
+  function check(){if(!valid())authorization=null;return Promise.resolve(valid());}
+  async function request(path,body){
+    if(!valid())throw Error('Вход для редактирования истёк. Нажмите «Войти» снова.');
     let response;
-    try {response=await fetch(origin()+path,{method:'POST',mode:'cors',credentials:'include',cache:'no-store',redirect:'error',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});}
-    catch {throw Error('Нет соединения с сервисом публикации. Черновик сохранён; повторять отправку автоматически нельзя.');}
-    let data;try{data=await response.json();}catch{throw Error('Сервис не вернул подтверждение. Проверьте историю коммитов.');}
-    if(!response.ok)throw Error(data.error||'GitHub не подтвердил запрос.');
-    return data;
-  }
-  async function directPublish(operation) {
-    // The user deliberately clicked Publish in the source editor. The Worker
-    // still validates the whole operation and requires a fresh review ID.
-    const token=session?.csrf;
-    if(!token)throw Error('Сессия истекла. Войдите через GitHub снова.');
-    const review=await request('/api/prepare',operation,token);
-    // Do not retry a possibly submitted commit under any circumstances.
-    const result=await request('/api/publish',{id:review.id},token);
-    if(!/^[a-f0-9]{40}$/.test(result.commit||''))throw Error('GitHub не подтвердил коммит. Проверьте историю.');
+    try {
+      response=await fetch(origin()+path,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'error',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+authorization.credential,
+          'X-CSRF-Token':authorization.csrf},body:JSON.stringify(body)});
+    }catch{throw Error('Нет соединения с сервисом публикации. Черновик сохранён; повторная отправка коммита запрещена.');}
+    let result;try{result=await response.json();}catch{throw Error('Не удалось получить ответ сервиса. Проверьте историю коммитов.');}
+    if(!response.ok){if(response.status===401)authorization=null;throw Error(result.error||'GitHub не подтвердил публикацию.');}
     return result;
   }
-  function reserve() {
-    if(session && session.expires>Date.now()+30000)return null;
-    // Reserve synchronously while the user's click gesture is active: the
-    // editor may await MathJax verification before committing.
-    return window.open('about:blank','_blank','popup,width=670,height=650');
+  async function directPublish(operation){
+    // One explicit Publish click. The server validates the edit, checks the
+    // remote revision, then applies a single atomic GitHub commit.
+    const review=await request('/api/prepare',structuredClone(operation));
+    const result=await request('/api/publish',{id:review.id});
+    if(!/^[a-f0-9]{40}$/.test(result.commit||''))
+      throw Error('GitHub не подтвердил коммит. Проверьте историю изменений.');
+    return result;
   }
-  function cancelReservation(popup) {if(popup&&!popup.closed)try{popup.close();}catch{}}
-  function popupPublish(operation,reserved) {
+  function reserve(){
+    if(valid())return null;
+    // Preserve the browser's user gesture while mathematical validation runs.
+    return window.open('about:blank','_blank','popup,width=570,height=520');
+  }
+  function cancelReservation(popup){if(popup&&!popup.closed)try{popup.close();}catch{}}
+  function authorize(reserved){
+    if(valid()){cancelReservation(reserved);return Promise.resolve(true);}
     const target=origin();
     const bytes=crypto.getRandomValues(new Uint8Array(32));
     const channel=btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    const popup=reserved||window.open(target+'/publish#channel='+channel+'&quick=1','_blank','popup,width=670,height=650');
-    if(reserved && !popup.closed)popup.location.replace(target+'/publish#channel='+channel+'&quick=1');
-    if(!popup)return Promise.reject(Error('Разрешите всплывающее окно публикации в браузере.'));
-    const snapshot=structuredClone(operation);
-    return new Promise((resolve,reject)=>{
+    const popup=reserved||window.open('about:blank','_blank','popup,width=570,height=520');
+    if(!popup)return Promise.reject(Error('Разрешите всплывающее окно для входа через GitHub.'));
+    const promise=new Promise((resolve,reject)=>{
       let finished=false;
-      function finish(error,result){if(finished)return;finished=true;clearInterval(poll);clearTimeout(timeout);window.removeEventListener('message',receive);error?reject(error):resolve(result);}
-      function receive(e){
-        if(e.origin!==target||e.source!==popup||e.data?.channel!==channel)return;
-        if(e.data.type==='ml-publish-ready')popup.postMessage({type:'ml-publish-draft',channel,operation:snapshot},target);
-        if(e.data.type==='ml-publish-done')finish(null,e.data.result);
-        if(e.data.type==='ml-publish-error')finish(Error(e.data.error||'Публикация не подтверждена.'));
+      function finish(error){
+        if(finished)return;finished=true;
+        clearInterval(poll);clearTimeout(timeout);window.removeEventListener('message',receive);
+        if(error)reject(error);else resolve(true);
+      }
+      function receive(event){
+        if(event.origin!==target||event.source!==popup||event.data?.channel!==channel)return;
+        if(event.data.type==='ml-auth-ready'){
+          popup.postMessage({type:'ml-auth-init',channel},target);
+        } else if(event.data.type==='ml-auth-granted'){
+          const d=event.data;
+          if(!/^[A-Za-z0-9_-]{43}$/.test(d.credential||'') ||
+             !/^[A-Za-z0-9_-]{43}$/.test(d.csrf||'') ||
+             !Number.isFinite(d.expires)||d.expires<=Date.now()+1000||
+             d.expires>Date.now()+13*60*1000 || d.version!=='publisher-v12-20261111'){
+            finish(Error('Сервис публикации вернул неверные данные. Проверьте версию Worker.'));return;
+          }
+          // A short-lived, content-only publishing permission. Never store
+          // in localStorage, URL, repository, or an HTML element.
+          authorization={credential:d.credential,csrf:d.csrf,expires:d.expires};
+          cancelReservation(popup);finish(null);
+        } else if(event.data.type==='ml-auth-error'){
+          finish(Error(event.data.error||'Не удалось подключить редактор.'));
+        }
       }
       window.addEventListener('message',receive);
-      const poll=setInterval(()=>{if(popup.closed)finish(Error('Окно закрыто. Проверьте историю GitHub перед повторной публикацией.'));},1000);
-      const timeout=setTimeout(()=>finish(Error('Время ожидания истекло. Проверьте историю GitHub.')),15*60*1000);
+      const poll=setInterval(()=>{
+        if(popup.closed)finish(Error('Окно входа закрыто. Черновик сохранён. Повторите вход.'));
+      },700);
+      const timeout=setTimeout(()=>finish(Error('Связь между окнами не установлена. Закройте окно входа и повторите попытку.')),120000);
     });
+    try{popup.location.replace(target+'/publish#channel='+channel+'&connect=1');}
+    catch(e){cancelReservation(popup);return Promise.reject(Error('Не удалось открыть окно авторизации.'));}
+    return promise;
   }
-  function open(operation,reserved=null) {
-    // This remains synchronous so the fallback popup isn't blocked.
-    if(session && session.expires>Date.now()+30000){cancelReservation(reserved);return directPublish(structuredClone(operation));}
-    return popupPublish(operation,reserved);
+  async function open(operation,reserved=null){
+    if(valid())cancelReservation(reserved);
+    else await authorize(reserved);
+    return directPublish(operation);
   }
-  function connect() {window.open(origin()+'/publish','_blank','noopener,noreferrer');}
-  window.addEventListener('focus',()=>{check().catch(()=>{});});
-  // The call may fail on browsers blocking third-party cookies. That is fine:
-  // the popup is the fallback, and no credentials are ever exposed in this page.
-  check().catch(()=>{});
-  globalThis.MLPublisher=Object.freeze({open,connect,check,reserve,cancelReservation});
+  function connect(){return authorize();}
+  globalThis.MLPublisher=Object.freeze({open,connect,check,reserve,cancelReservation,version:VERSION});
 })();

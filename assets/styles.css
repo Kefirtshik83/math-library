@@ -412,9 +412,20 @@ html {-webkit-text-size-adjust:100%;text-size-adjust:100%}
  background:transparent;white-space:pre-wrap;z-index:0;border:0;
 }
 #edit-dialog .source-editor #edit-source{
- display:block;position:relative;z-index:1;background:transparent;color:transparent;
+ display:block;position:relative;z-index:1;background:transparent;color:var(--ink);
+ -webkit-text-fill-color:var(--ink); /* Always readable if highlighting fails. */
  caret-color:var(--ink);border:0;border-radius:0;resize:vertical;outline-offset:-3px;
  min-height:250px;max-height:50vh;overflow:auto;
+}
+/* Enable the translucent text layer only AFTER the colored view exists. The
+   highlight is ABOVE the textarea, so an invisible textarea cannot hide it. */
+.source-editor #edit-highlight{display:none;z-index:2;color:var(--ink)}
+.source-editor.syntax-ready #edit-highlight{display:block}
+#edit-dialog .source-editor.syntax-ready #edit-source{
+ color:transparent;-webkit-text-fill-color:transparent;
+}
+#edit-dialog .source-editor #edit-source::selection{
+ background:#8dc5df;color:#11232e;-webkit-text-fill-color:#11232e;
 }
 #edit-dialog .source-editor #edit-source::selection{background:#8dc5df;color:#11232e}
 .source-editor .tex-command{color:#1c64ac;font-weight:600}

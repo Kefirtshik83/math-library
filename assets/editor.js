@@ -32,8 +32,13 @@
   function updateHighlight() {
     const area=$('#edit-source'), high=$('#edit-highlight');
     if(!area || !high || !window.MLMathTools)return;
-    high.innerHTML=window.MLMathTools.highlight(area.value);
-    high.scrollTop=area.scrollTop;high.scrollLeft=area.scrollLeft;
+    const wrapper=high.closest('.source-editor');
+    try{
+      const colored=window.MLMathTools.highlight(area.value);
+      high.innerHTML=colored;
+      high.scrollTop=area.scrollTop;high.scrollLeft=area.scrollLeft;
+      wrapper?.classList.add('syntax-ready');
+    }catch(e){wrapper?.classList.remove('syntax-ready');console.warn('Source highlighting unavailable:',e);}
   }
   const sourceArea=$('#edit-source');
   sourceArea?.addEventListener('scroll',()=>{
@@ -538,8 +543,13 @@
     return d;
   }
 
-  function connectDialog() {
-    try{MLPublisher.connect();}catch(e){alert(e.message);}
+  async function connectDialog() {
+    try{
+      const link=MLPublisher.connect();
+      notice('Открыто окно входа. После авторизации вернитесь к статье.');
+      await link;
+      notice('Редактор подключён к GitHub. Можно публиковать изменения прямо со страницы.','success');
+    }catch(e){notice('Не удалось войти: '+e.message,'error');}
   }
   async function publishCurrent(reserved=null) {
     if(!current)return false;

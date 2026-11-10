@@ -1,15 +1,14 @@
 import {GitHub} from './github.mjs';
 import {HttpError,assert,random,hash,challenge,cookie,setCookie,SID,FLOW,config,sameOrigin,jsonBody,seal,unseal,json,secure} from './security.mjs';
-const AGE=30*60*1000, IDLE=15*60*1000, LOGIN_AGE=5*60*1000, REVIEW_AGE=5*60*1000;
+const AGE=30*60*1000, IDLE=15*60*1000, LOGIN_AGE=5*60*1000, REVIEW_AGE=5*60*1000, GRANT_AGE=12*60*1000;
+const VERSION='publisher-v12-20261111';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()}) {
   const redirect=(path,headers={})=>new Response(null,{status:303,headers:{Location:path,...headers}});
   async function revoke(token) {
     try {const r=await transport(`https://api.github.com/applications/${env.GITHUB_CLIENT_ID}/token`,{method:'DELETE',redirect:'manual',signal:AbortSignal.timeout(5000),headers:{Accept:'application/vnd.github+json','User-Agent':'math-library-publisher','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json',Authorization:'Basic '+btoa(env.GITHUB_CLIENT_ID+':'+env.GITHUB_CLIENT_SECRET)},body:JSON.stringify({access_token:token})});return r.ok;}catch{return false;}
   }
-  async function session(request,touch=true) {
-    const sid=cookie(request,SID);assert(TOKEN.test(sid),401,'Sign in to publish.');
-    const key='session:'+await hash(sid);
+  async function sessionFromKey(key,touch=true) {
     const s=await storage.transaction(async tx=>{
       const value=await tx.get(key);
       assert(value && value.expires>now() && value.last+IDLE>now(),401,'Session expired. Sign in again.');
@@ -18,19 +17,52 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
       return value;
     });
     const token=await unseal(s.token,env,key);
-    return {sid,key,s,token};
+    return {key,s,token};
+  }
+  async function session(request,touch=true) {
+    const sid=cookie(request,SID);assert(TOKEN.test(sid),401,'Sign in to publish.');
+    return sessionFromKey('session:'+await hash(sid),touch);
+  }
+  async function grantSession(request,touch=true) {
+    const bearer=request.headers.get('Authorization')||'';
+    assert(/^Bearer [A-Za-z0-9_-]{43}$/.test(bearer),401,'Sign in to publish.');
+    // Cross-origin bearer credentials are accepted only from our exact website
+    // and never from an arbitrary Origin, even if the bearer itself is valid.
+    assert(request.headers.get('Origin')===env.SITE_ORIGIN,403,'Untrusted request origin');
+    const key='grant:'+await hash(bearer.slice(7));
+    const grant=await storage.get(key);
+    assert(grant && grant.expires>now() && grant.owner===env.GITHUB_OWNER_ID,401,'Editor authorization expired. Sign in again.');
+    const auth=await sessionFromKey(grant.sessionKey,touch);
+    return {...auth,key,csrf:grant.csrf,grant:true};
   }
   async function mutation(request) {
     const origin=request.headers.get('Origin');
-    if(origin===env.PUBLISHER_ORIGIN) sameOrigin(request,env);
-    else {
+    let auth;
+    if(request.headers.has('Authorization')) {
       assert(origin===env.SITE_ORIGIN,403,'Untrusted request origin');
-      const fetchSite=request.headers.get('Sec-Fetch-Site');
-      assert(!fetchSite || fetchSite==='cross-site' || fetchSite==='same-site',403,'Untrusted request site');
+      auth=await grantSession(request);
+    } else {
+      sameOrigin(request,env);
+      auth=await session(request);
     }
-    const auth=await session(request);
-    assert(request.headers.get('X-CSRF-Token')===auth.s.csrf,403,'Invalid CSRF token');
+    assert(request.headers.get('X-CSRF-Token')===(auth.grant?auth.csrf:auth.s.csrf),403,'Invalid CSRF token');
     return auth;
+  }
+  async function issueGrant(request) {
+    // Only a first-party, logged-in, CSRF-checked publisher page may mint a
+    // limited editing capability. It is NOT a GitHub token.
+    assert(!request.headers.has('Authorization'),400,'Cannot exchange a grant for another grant');
+    const auth=await mutation(request);
+    const credential=random(),key='grant:'+await hash(credential),csrf=random();
+    const expires=Math.min(auth.s.expires,now()+GRANT_AGE);
+    await storage.transaction(async tx=>{
+      const activeKey='grant-active:'+auth.key;
+      const old=await tx.get(activeKey);
+      if(old)await tx.delete(old);
+      await tx.put(key,{sessionKey:auth.key,owner:env.GITHUB_OWNER_ID,csrf,expires});
+      await tx.put(activeKey,key);
+    });
+    return json({credential,csrf,expires,version:VERSION});
   }
   async function start(request) {
     sameOrigin(request,env);
@@ -89,11 +121,12 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
     config(env);
     const url=new URL(request.url);
     assert(url.origin===env.PUBLISHER_ORIGIN,403,'Invalid request host');
-    assert(!request.headers.has('Authorization'),400,'Browser bearer tokens are not accepted');
+    if(!url.pathname.startsWith('/api/') && request.headers.has('Authorization'))
+      throw new HttpError(400,'Browser bearer credentials belong only to the API');
     if(request.method==='GET' && url.pathname==='/publish') return new Response(assets.html,{headers:{'Content-Type':'text/html; charset=utf-8'}});
     if(request.method==='GET' && url.pathname==='/publish.js') return new Response(assets.js,{headers:{'Content-Type':'text/javascript; charset=utf-8'}});
     if(request.method==='GET' && url.pathname==='/publish.css') return new Response(assets.css,{headers:{'Content-Type':'text/css; charset=utf-8'}});
-    if(request.method==='GET' && url.pathname==='/config') return json({siteOrigin:env.SITE_ORIGIN,siteURL:env.SITE_URL,repository:env.GITHUB_OWNER+'/'+env.GITHUB_REPO});
+    if(request.method==='GET' && url.pathname==='/config') return json({siteOrigin:env.SITE_ORIGIN,siteURL:env.SITE_URL,repository:env.GITHUB_OWNER+'/'+env.GITHUB_REPO,version:VERSION});
     if(request.method==='POST' && url.pathname==='/auth/start') return start(request);
     if(request.method==='GET' && url.pathname==='/auth/callback') return callback(request,url);
     if(url.pathname.startsWith('/api/')) {
@@ -105,14 +138,29 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
         assert(trustedSite,403,'Untrusted preflight origin');
         assert(['POST','GET'].includes(request.headers.get('Access-Control-Request-Method')),403,'Invalid preflight');
         const names=(request.headers.get('Access-Control-Request-Headers')||'').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
-        assert(names.every(n=>n==='content-type'||n==='x-csrf-token'),403,'Invalid preflight headers');
+        assert(names.every(n=>n==='content-type'||n==='x-csrf-token'||n==='authorization'),403,'Invalid preflight headers');
         return new Response(null,{status:204,headers:{'Access-Control-Max-Age':'300'}});
       }
       if(request.method==='GET' && url.pathname==='/api/session') {
-        const {s}=await session(request,false);return json({csrf:s.csrf,expires:s.expires});
+        const auth=request.headers.has('Authorization')?await grantSession(request,false):await session(request,false);
+        return json({csrf:auth.grant?auth.csrf:auth.s.csrf,expires:auth.s.expires,version:VERSION});
+      }
+      if(request.method==='POST' && url.pathname==='/api/grant') {
+        // Short-lived publisher-only capability for same-page editing.
+        const body=await jsonBody(request,1024);
+        assert(body && Object.keys(body).length===0,400,'Invalid grant request');
+        return issueGrant(request);
       }
       if(request.method==='POST' && url.pathname==='/api/logout') {
-        const auth=await mutation(request);await storage.delete(auth.key);
+        const auth=await mutation(request);
+        assert(!auth.grant,403,'Log out from the publisher page.');
+        await storage.transaction(async tx=>{
+          const activeKey='grant-active:'+auth.key;
+          const active=await tx.get(activeKey);
+          if(active)await tx.delete(active);
+          await tx.delete(activeKey);
+          await tx.delete(auth.key);
+        });
         const revoked=await revoke(auth.token);
         return json({loggedOut:true,githubTokenRevoked:revoked},200,{'Set-Cookie':setCookie(SID,'',0)});
       }
@@ -152,5 +200,7 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
 export async function cleanup(storage,now=Date.now()) {
   // Bounded by login quotas and short expirations. No tokens or drafts in logs.
   const items=await storage.list();
-  for(const [key,value] of items) if(value.expires && value.expires<=now) await storage.delete(key);
+  for(const [key,value] of items) if(value?.expires && value.expires<=now) await storage.delete(key);
+  const fresh=await storage.list();
+  for(const [key,value] of fresh) if(key.startsWith('grant-active:') && !fresh.has(value)) await storage.delete(key);
 }

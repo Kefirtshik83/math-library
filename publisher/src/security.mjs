@@ -69,7 +69,7 @@ export function secure(response,request=null,env=null) {
     h.set('Access-Control-Allow-Origin',env.SITE_ORIGIN);
     h.set('Access-Control-Allow-Credentials','true');
     h.set('Vary','Origin');
-    h.set('Access-Control-Allow-Headers','Content-Type, X-CSRF-Token');
+    h.set('Access-Control-Allow-Headers','Content-Type, X-CSRF-Token, Authorization');
     h.set('Access-Control-Allow-Methods','GET, POST, OPTIONS');
   }
   return new Response(response.body,{status:response.status,headers:h});

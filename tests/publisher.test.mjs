@@ -61,27 +61,50 @@ test('upstream redirects are rejected without forwarding secrets to another host
   };
   assert.equal((await h.request(flow.path,{headers:{Cookie:flow.binding}})).status,502);
 });
-test('site-origin mutation needs owner cookie and CSRF, then may publish',async()=>{
-  const h=harness();
-  const site={Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site'};
-  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:site})).status,401);
+test('site-origin requests cannot use the owner cookie; a short-lived scoped grant works',async()=>{
+  const h=harness(),site={Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site'};
+  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:site})).status,403);
   await h.login();
-  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:{...site,'X-CSRF-Token':'wrong'}})).status,403);
-  const prep=await h.request('/api/prepare',{method:'POST',body:article(),headers:site});
+  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:site})).status,403);
+  const grantReply=await h.request('/api/grant',{method:'POST',body:{}});
+  assert.equal(grantReply.status,200);
+  const grant=await grantReply.json();
+  assert.match(grant.credential,/^[A-Za-z0-9_-]{43}$/);
+  assert.equal(grant.version,'publisher-v12-20261111');
+  assert.ok(!JSON.stringify(grant).includes('test-only-user-token'));
+  const authorized={...site,Authorization:'Bearer '+grant.credential,'X-CSRF-Token':grant.csrf};
+  const prep=await h.request('/api/prepare',{method:'POST',body:article(),auth:false,headers:authorized});
   assert.equal(prep.status,200);
   assert.equal(prep.headers.get('Access-Control-Allow-Origin'),h.env.SITE_ORIGIN);
-  assert.equal(prep.headers.get('Access-Control-Allow-Credentials'),'true');
   const {id}=await prep.json();
-  const done=await h.request('/api/publish',{method:'POST',body:{id},headers:site});
+  const done=await h.request('/api/publish',{method:'POST',body:{id},auth:false,headers:authorized});
   assert.equal(done.status,200);assert.equal(h.gh.commits.length,1);
 });
-test('cross-origin preflight is restricted to the configured site and headers',async()=>{
+test('grant rejects anonymous issuance, forged origins, CSRF, replay after rotation and expiry',async()=>{
+  const h=harness();assert.equal((await h.request('/api/grant',{method:'POST',body:{}})).status,401);
+  await h.login();
+  const a=await (await h.request('/api/grant',{method:'POST',body:{}})).json();
+  const b=await (await h.request('/api/grant',{method:'POST',body:{}})).json();
+  const headers={Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site','Authorization':'Bearer '+a.credential,'X-CSRF-Token':a.csrf};
+  const submit=hdr=>h.request('/api/prepare',{method:'POST',body:article(),auth:false,headers:hdr});
+  assert.equal((await submit(headers)).status,401); // previous grant rotated out
+  const second={...headers,Authorization:'Bearer '+b.credential,'X-CSRF-Token':b.csrf};
+  assert.equal((await submit({...second,Origin:'https://attacker.example'})).status,403);
+  assert.equal((await submit({...second,'X-CSRF-Token':'bad'})).status,403);
+  assert.equal((await submit({...second,Authorization:'Bearer '+('A'.repeat(43))})).status,401);
+  assert.equal((await submit(second)).status,200);
+  assert.equal((await h.request('/api/grant',{method:'POST',body:{},auth:false,headers:second})).status,400);
+  h.tick(12*60000+1);
+  assert.equal((await submit(second)).status,401);
+});
+test('third-party authorization header preflight is allowed only for the exact site',async()=>{
   const h=harness();
-  const good=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type, X-CSRF-Token'}});
+  const good=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type, X-CSRF-Token, Authorization'}});
   assert.equal(good.status,204);assert.equal(good.headers.get('Access-Control-Allow-Origin'),h.env.SITE_ORIGIN);
+  assert.match(good.headers.get('Access-Control-Allow-Headers'),/Authorization/);
   const evil=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:'https://evil.example','Access-Control-Request-Method':'POST'}});
   assert.equal(evil.status,403);assert.equal(evil.headers.get('Access-Control-Allow-Origin'),null);
-  const injection=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Authorization'}});
+  const injection=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'X-Pwned'}});
   assert.equal(injection.status,403);
 });
 test('revoked GitHub token blocks confirmation even with a live local session',async()=>{

@@ -11,6 +11,18 @@
   let saved;try{saved=JSON.parse(sessionStorage.getItem('ml-pending')||'null');}catch{}
   const fragment=new URLSearchParams(location.hash.slice(1));
   const quick=fragment.get('quick')==='1' && !!sender;
+  const bridgeChannel=fragment.get('connect')==='1'?fragment.get('channel'):'';
+  if(bridgeChannel && /^[A-Za-z0-9_-]{43}$/.test(bridgeChannel)) {
+    sessionStorage.setItem('ml-auth-bridge',bridgeChannel);
+  }
+  const activeBridge=sessionStorage.getItem('ml-auth-bridge')||'';
+  const bridgeMode=/^[A-Za-z0-9_-]{43}$/.test(activeBridge);
+  let bridgeApproved=bridgeMode && sessionStorage.getItem('ml-auth-approved')===activeBridge;
+  let granting=false,granted=false;
+  if(bridgeMode){
+    document.querySelector('h1').textContent='Вход для редактирования';
+    document.querySelector('main > p:not(.eyebrow)')?.replaceChildren(document.createTextNode('Авторизация нужна только для публикации ваших заметок.'));
+  }
   let channel=fragment.get('channel')||saved?.channel||'';
   if(!/^[A-Za-z0-9_-]{43}$/.test(channel))channel='';
   let operation=saved?.channel===channel?saved.operation:null;
@@ -102,6 +114,33 @@
     catch(e){status('Не удалось подготовить изменения: '+e.message);$('#retry').hidden=false;}
     finally{preparing=false;}
   }
+  async function sendBridgeGrant() {
+    if(!bridgeMode||!bridgeApproved||!sender||!csrf||granting||granted)return;
+    granting=true;
+    try {
+      status('Подключаем редактор…');
+      const data=await api('/api/grant',{});
+      if(!/^[A-Za-z0-9_-]{43}$/.test(data.credential)||!/^[A-Za-z0-9_-]{43}$/.test(data.csrf)||
+         !Number.isFinite(data.expires)||data.expires<=Date.now()||data.expires>Date.now()+13*60*1000)throw Error('Неверный ответ авторизации.');
+      sender.postMessage({type:'ml-auth-granted',channel:activeBridge,credential:data.credential,csrf:data.csrf,expires:data.expires,version:data.version},config.siteOrigin);
+      granted=true;sessionStorage.removeItem('ml-auth-bridge');sessionStorage.removeItem('ml-auth-approved');
+      status('Редактор подключён. Вернитесь к статье.');
+      setTimeout(()=>window.close(),300);
+    } catch(e){status('Не удалось подключить редактор: '+e.message+' Вернитесь к статье и повторите вход.');}
+    finally {granting=false;}
+  }
+  // The exact owner-site origin AND a random tab-specific challenge are checked
+  // before any scoped writing capability is handed to the opener.
+  window.addEventListener('message',e=>{
+    if(!bridgeMode||!sender||e.source!==sender||e.origin!==config.siteOrigin||
+       e.data?.type!=='ml-auth-init'||e.data?.channel!==activeBridge)return;
+    bridgeApproved=true;sessionStorage.setItem('ml-auth-approved',activeBridge);
+    if(csrf)void sendBridgeGrant();
+  });
+  if(bridgeMode) {
+    const signal=()=>{if(sender&&!granted)sender.postMessage({type:'ml-auth-ready',channel:activeBridge},config.siteOrigin);};
+    signal();const signalTimer=setInterval(signal,400);setTimeout(()=>clearInterval(signalTimer),30000);
+  }
   window.addEventListener('message',e=>{
     if(e.origin!==config.siteOrigin||e.source!==sender||!channel||e.data?.channel!==channel||e.data?.type!=='ml-publish-draft'||operation||done)return;
     const value=e.data.operation;
@@ -109,9 +148,12 @@
     operation=value;save();send({type:'ml-publish-received'});prepare();
   });
   const ready=()=>{if(!operation&&channel)send({type:'ml-publish-ready'});};
-  ready();const timer=setInterval(ready,700);setTimeout(()=>clearInterval(timer),30000);
-  try{const s=await api('/api/session');csrf=s.csrf;$('#logout').hidden=false;status(operation?'Черновик получен.':'Вход выполнен. Вернитесь к редактору и нажмите «Опубликовать».');await prepare();}
-  catch(e){status('Для публикации нужен вход владельца. Черновик не будет опубликован автоматически.');$('#login').hidden=false;}
+  if(!bridgeMode){ready();const timer=setInterval(ready,700);setTimeout(()=>clearInterval(timer),30000);}
+  try{const s=await api('/api/session');csrf=s.csrf;$('#logout').hidden=false;
+    status(bridgeMode?(sender?'Вход выполнен. Подключаем редактор…':'Вход выполнен, но браузер разорвал связь между окнами. Закройте это окно и нажмите «Войти» на сайте ещё раз.'):
+      operation?'Черновик получен.':'Вход выполнен. Вернитесь к редактору и нажмите «Опубликовать».');
+    if(bridgeMode)await sendBridgeGrant(); else await prepare();}
+  catch(e){status(bridgeMode?'Войдите через GitHub, чтобы подключить редактор.':'Для публикации нужен вход владельца. Черновик не будет опубликован автоматически.');$('#login').hidden=false;}
   $('#confirm').addEventListener('change',()=>{$('#publish').disabled=!$('#confirm').checked||!review||done||submitting;});
   async function submitReview(quickMode=false){
     if(!review||done||submitting||(!quickMode&&!$('#confirm').checked))return;
