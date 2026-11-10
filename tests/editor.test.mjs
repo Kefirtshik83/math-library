@@ -6,6 +6,11 @@ import {JSDOM} from 'jsdom';
 import {harness,hash} from './helpers.mjs';
 const source=path=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
+async function waitFor(predicate, timeoutMs=4000) {
+  const start=Date.now();
+  while(!predicate() && Date.now()-start<timeoutMs) await delay(25);
+  return !!predicate();
+}
 function dom(html,path='articles/coarse-group-cohomology.html?edit=1'){
   const d=new JSDOM(html,{url:'https://owner.github.io/math-library/'+path,runScripts:'outside-only',pretendToBeVisual:true});
   const w=d.window;w.structuredClone=structuredClone;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;
@@ -74,8 +79,17 @@ test('publishing an editor operation through the real server keeps unrelated blo
     const response=await h.prepare(op);assert.equal(response.status,200);const review=await response.json();const result=await h.publish(review.id);assert.equal(result.status,200);return result.json();
   }});
   try{
-    click(w,'[data-edit-block="b002"]');w.document.querySelector('#edit-source').value='Updated only this paragraph.';click(w,'[data-action="publish"]');await delay(100);
-    assert.equal(h.gh.commits.length,1);const text=h.gh.files.get('notes/'+data.slug+'.md');assert.ok(text.includes('Updated only this paragraph.'));
+    click(w,'[data-edit-block="b002"]');
+    const textarea=w.document.querySelector('#edit-source');
+    textarea.value='Updated only this paragraph.';
+    textarea.dispatchEvent(new w.Event('input',{bubbles:true}));
+    click(w,'[data-action="publish"]');
+    // v12 validates the mathematical text asynchronously before contacting
+    // the real publisher. A fixed 100 ms delay races that validation on CI.
+    await waitFor(()=>h.gh.commits.length===1 || /Не удалось опубликовать/.test(w.document.querySelector('#ml-edit-notice')?.textContent||''));
+    const problem=[w.document.querySelector('#edit-error')?.textContent,w.document.querySelector('#ml-edit-notice')?.textContent].filter(Boolean).join(' | ');
+    assert.equal(h.gh.commits.length,1,'Publishing did not create a commit: '+problem);
+    const text=h.gh.files.get('notes/'+data.slug+'.md');assert.ok(text.includes('Updated only this paragraph.'));
     for(const b of data.blocks.filter(x=>x.id!=='b002'))assert.ok(text.includes(b.source),b.id);
     assert.deepEqual(Object.keys(JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))),[]);
   }finally{w.close();}
@@ -98,17 +112,38 @@ test('new articles and section drafts still work with a null creation baseline',
     click(w,'[data-action="create-publish"]');const drafts=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'));assert.equal(drafts.test.baseRevision,null);assert.equal(drafts.test.collection,'algebra');
   }finally{w.close();}
 });
-test('publisher transport checks origin, window and channel; spoofed success is ignored',async()=>{
+test('publisher transport rejects forged origin, popup and channel during v12 login',async()=>{
   const d=dom('<meta name="ml-publisher" content="https://publisher.example">','index.html'),w=d.window;
-  const outgoing=[];const popup={closed:false,postMessage:(m,o)=>outgoing.push({m,o})};let openURL;w.open=url=>{openURL=url;return popup;};
-  w.eval(source('assets/publisher.js'));const promise=w.MLPublisher.open({kind:'collections',collections:[]});
-  let settled=false;promise.then(()=>{settled=true;});const channel=new URLSearchParams(new URL(openURL).hash.slice(1)).get('channel');
-  const event=(origin,from,data)=>w.dispatchEvent(new w.MessageEvent('message',{origin,source:from,data:{...data,channel}}));
+  const outgoing=[];
+  let openURL='';
+  const popup={closed:false,location:{replace(url){openURL=url;}},
+    postMessage:(m,o)=>outgoing.push({m,o}),close(){popup.closed=true;}};
+  w.open=()=>popup;
+  w.eval(source('assets/publisher.js'));
+  const promise=w.MLPublisher.connect();
+  const channel=new URLSearchParams(new URL(openURL).hash.slice(1)).get('channel');
+  assert.match(channel,/^[A-Za-z0-9_-]{43}$/);
+  const event=(origin,from,data)=>w.dispatchEvent(new w.MessageEvent('message',{origin,source:from,data:{channel,...data}}));
+  const grant={type:'ml-auth-granted',credential:'A'.repeat(43),csrf:'B'.repeat(43),expires:Date.now()+600000,version:'publisher-v12-20261111'};
   try{
-    event('https://evil.example',popup,{type:'ml-publish-done'});event('https://publisher.example',{}, {type:'ml-publish-done'});await delay(10);assert.equal(settled,false);
-    event('https://publisher.example',popup,{type:'ml-publish-ready'});assert.equal(outgoing.length,1);assert.equal(outgoing[0].o,'https://publisher.example');
-    event('https://publisher.example',popup,{type:'ml-publish-done',result:{commit:'a'.repeat(40)}});assert.equal((await promise).commit,'a'.repeat(40));
-  }finally{w.close();}
+    // Wrong origin, wrong popup, and wrong channel cannot activate authorization.
+    event('https://evil.example',popup,{type:'ml-auth-ready'});
+    event('https://publisher.example',{}, {type:'ml-auth-ready'});
+    event('https://publisher.example',popup,{...grant,channel:'C'.repeat(43)});
+    event('https://evil.example',popup,grant);
+    event('https://publisher.example',{},grant);
+    assert.equal(await w.MLPublisher.check(),false);
+    assert.equal(outgoing.length,0);
+
+    event('https://publisher.example',popup,{type:'ml-auth-ready'});
+    assert.equal(outgoing.length,1);
+    assert.equal(outgoing[0].m.type,'ml-auth-init');
+    assert.equal(outgoing[0].o,'https://publisher.example');
+    event('https://publisher.example',popup,grant);
+    await promise;
+    assert.equal(await w.MLPublisher.check(),true);
+    assert.equal(popup.closed,true);
+  } finally {w.close();}
 });
 test('publisher review renders malicious source as text, and never confirms automatically',async()=>{
   const d=dom(source('publisher/public/publish.html')),w=d.window;
