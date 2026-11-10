@@ -88,7 +88,7 @@ export class GitHub {
     // No arbitrary GraphQL, paths, branches, deletions, author or message from the client.
     const result=await this.request('/graphql',{
       query:'mutation Publish($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input:$input) { commit { oid } } }',
-      variables:{input:{branch:{repositoryNameWithOwner:`${this.env.GITHUB_OWNER}/${this.env.GITHUB_REPO}`,refName:this.env.GITHUB_BRANCH},expectedHeadOid:review.head,
+      variables:{input:{branch:{repositoryNameWithOwner:`${this.env.GITHUB_OWNER}/${this.env.GITHUB_REPO}`,branchName:this.env.GITHUB_BRANCH},expectedHeadOid:review.head,
         message:{headline:review.kind==='article'?'Publish mathematical article':'Add library section'},fileChanges:{additions}}}
     });
     if(result.errors?.length) throw new HttpError(409,'GitHub did not confirm the commit. The branch may have changed or a rule blocked publication. Review again; nothing will be force-pushed.');

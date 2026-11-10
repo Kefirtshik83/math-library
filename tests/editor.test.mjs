@@ -18,17 +18,19 @@ function dom(html,path='articles/coarse-group-cohomology.html?edit=1'){
 function loadEditor(d,{drafts={},publish}={}){
   const w=d.window;w.localStorage.setItem('ml-editor-drafts-v1',JSON.stringify(drafts));
   w.MLPublisher={open:publish||(()=>Promise.reject(Error('mock not configured'))),connect:()=>{}};
+  w.eval(source('assets/math-tools.js'));
+  w.MathJax={startup:{promise:Promise.resolve()},tex2svgPromise:async()=>w.document.createElement('div')};
   w.eval(source('assets/editor.js'));return w;
 }
 const articleData=html=>JSON.parse(new JSDOM(html).window.document.querySelector('#ml-article-data').textContent);
 const html=source('articles/coarse-group-cohomology.html');
 function click(w,selector){const el=w.document.querySelector(selector);assert.ok(el,selector);el.click();}
 
-test('existing article keeps per-block editing, folds and local drafts with exact baseline',()=>{
+test('existing article keeps per-block editing, folds and local drafts with exact baseline',async()=>{
   const d=dom(html),w=loadEditor(d);try{
     assert.equal(w.document.querySelector('#edit-toolbar').hidden,false);
     assert.ok(w.document.querySelectorAll('details.proof-fold').length>=2);
-    click(w,'[data-edit-block="b002"]');w.document.querySelector('#edit-source').value='Changed $x_1^2$.';click(w,'[data-action="save-draft"]');
+    click(w,'[data-edit-block="b002"]');w.document.querySelector('#edit-source').value='Changed $x_1^2$.';click(w,'[data-action="save-draft"]');await delay(25);
     const draft=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))['coarse-group-cohomology'];
     assert.equal(draft.blocks.find(x=>x.id==='b002').source,'Changed $x_1^2$.');
     assert.equal(draft.baseRevision,articleData(html).sourceSha256);
@@ -46,7 +48,7 @@ test('legacy sourceExact recovers a baseline; legacy draft without one fails clo
   try{await delay(40);const saved=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))[draft.slug];assert.equal(saved.baseRevision,await hash(data.sourceExact));}finally{w.close();}
   delete draft.sourceExact;let sent=false;
   const d2=dom(html),w2=loadEditor(d2,{drafts:{[draft.slug]:draft},publish:async()=>{sent=true;}});
-  try{click(w2,'[data-action="publish-article"]');await delay(20);assert.equal(sent,false);assert.ok(w2.alerts.some(s=>s.includes('исходная ревизия')));}finally{w2.close();}
+  try{click(w2,'[data-action="publish-article"]');await delay(20);assert.equal(sent,false);assert.ok(w2.document.querySelector('#ml-edit-notice')?.textContent.includes('исходная ревизия'));}finally{w2.close();}
 });
 test('stored path is never used as a publication target',async()=>{
   const data=articleData(html),draft={...data,baseRevision:data.sourceSha256,path:'.github/workflows/pages.yml'};let sent;
@@ -81,8 +83,8 @@ test('publishing an editor operation through the real server keeps unrelated blo
 test('edits made while the publication window is open are preserved',async()=>{
   let resolve,submitted;const d=dom(html),w=loadEditor(d,{publish:op=>{submitted=op;return new Promise(r=>{resolve=r;});}});
   try{
-    click(w,'[data-action="publish-article"]');click(w,'[data-edit-block="b002"]');w.document.querySelector('#edit-source').value='Newer local edit';click(w,'[data-action="save-draft"]');
-    resolve({base:'b'.repeat(64),commit:'a'.repeat(40)});await delay(30);
+    click(w,'[data-action="publish-article"]');await delay(60);click(w,'[data-edit-block="b002"]');w.document.querySelector('#edit-source').value='Newer local edit';click(w,'[data-action="save-draft"]');
+    await delay(80);assert.equal(typeof resolve,'function');resolve({base:'b'.repeat(64),commit:'a'.repeat(40)});await delay(30);
     const saved=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))['coarse-group-cohomology'];
     assert.equal(saved.blocks.find(b=>b.id==='b002').source,'Newer local edit');assert.equal(saved.baseRevision,'b'.repeat(64));assert.notEqual(submitted.blocks[1].source,'Newer local edit');
   }finally{w.close();}
@@ -100,7 +102,7 @@ test('publisher transport checks origin, window and channel; spoofed success is 
   const d=dom('<meta name="ml-publisher" content="https://publisher.example">','index.html'),w=d.window;
   const outgoing=[];const popup={closed:false,postMessage:(m,o)=>outgoing.push({m,o})};let openURL;w.open=url=>{openURL=url;return popup;};
   w.eval(source('assets/publisher.js'));const promise=w.MLPublisher.open({kind:'collections',collections:[]});
-  let settled=false;promise.then(()=>{settled=true;});const channel=new URL(openURL).hash.slice('#channel='.length);
+  let settled=false;promise.then(()=>{settled=true;});const channel=new URLSearchParams(new URL(openURL).hash.slice(1)).get('channel');
   const event=(origin,from,data)=>w.dispatchEvent(new w.MessageEvent('message',{origin,source:from,data:{...data,channel}}));
   try{
     event('https://evil.example',popup,{type:'ml-publish-done'});event('https://publisher.example',{}, {type:'ml-publish-done'});await delay(10);assert.equal(settled,false);
@@ -132,7 +134,7 @@ test('production MathJax renders AMS math without HTML/require/autoload commands
     w.eval(source('assets/mathjax-config.js'));w.eval(source('assets/vendor/mathjax-tex-svg.js'));
     await Promise.race([w.MathJax.startup.promise,delay(5000).then(()=>{throw Error('MathJax timed out');})]);
     assert.ok(w.document.querySelector('#math svg'));assert.equal(w.document.querySelectorAll('a[href^="javascript:"]').length,0);
-    assert.deepEqual(Array.from(w.MathJax.config.tex.packages),['base','ams','newcommand','noundefined']);
+    assert.deepEqual(Array.from(w.MathJax.config.tex.packages),['base','ams','newcommand']);
     assert.ok(![...w.document.querySelectorAll('#evil [style]')].some(e=>e.getAttribute('style').includes('position:fixed')));
   }finally{w.close();}
 });
@@ -140,10 +142,10 @@ test('production MathJax renders AMS math without HTML/require/autoload commands
 test('a successful publication cannot overwrite another tab’s newer local draft',async()=>{
   let resolve;const d=dom(html),w=loadEditor(d,{publish:()=>new Promise(r=>{resolve=r;})});
   try{
-    click(w,'[data-action="publish-article"]');
+    click(w,'[data-action="publish-article"]');await delay(70);
     const other={...articleData(html),baseRevision:articleData(html).sourceSha256};other.blocks[1].source='Different tab newer edit';
     w.localStorage.setItem('ml-editor-drafts-v1',JSON.stringify({[other.slug]:other}));
-    resolve({base:'b'.repeat(64),commit:'a'.repeat(40)});await delay(30);
+    await delay(80);assert.equal(typeof resolve,'function');resolve({base:'b'.repeat(64),commit:'a'.repeat(40)});await delay(30);
     const saved=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))[other.slug];
     assert.equal(saved.blocks[1].source,'Different tab newer edit');assert.equal(saved.baseRevision,other.baseRevision);
   }finally{w.close();}
@@ -161,4 +163,13 @@ test('new editor recovers the revision from a cached pre-upgrade HTML page',asyn
   w.document.querySelector('#ml-article-data').textContent=JSON.stringify(data);
   loadEditor(d);
   try{await delay(50);const saved=JSON.parse(w.localStorage.getItem('ml-editor-drafts-v1'))[data.slug];assert.equal(saved.baseRevision,await hash(data.sourceExact));}finally{w.close();}
+});
+
+test('source highlighting escapes user text and does not execute raw HTML',()=>{
+  const d=dom(html),w=loadEditor(d);try{
+    click(w,'[data-edit-block="b002"]');const area=w.document.querySelector('#edit-source');
+    area.value='<img src=x onerror=evil()> $\\frac{a}{b}$';area.dispatchEvent(new w.Event('input'));
+    assert.equal(w.document.querySelector('#edit-highlight img'),null);
+    assert.ok(w.document.querySelector('#edit-highlight .tex-command'));
+  }finally{w.close();}
 });

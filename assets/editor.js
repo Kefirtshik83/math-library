@@ -27,6 +27,33 @@
   }
 
   function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // The editable textarea remains the source of truth. The colored overlay is
+  // presentation only; never interpret source as trusted HTML.
+  function updateHighlight() {
+    const area=$('#edit-source'), high=$('#edit-highlight');
+    if(!area || !high || !window.MLMathTools)return;
+    high.innerHTML=window.MLMathTools.highlight(area.value);
+    high.scrollTop=area.scrollTop;high.scrollLeft=area.scrollLeft;
+  }
+  const sourceArea=$('#edit-source');
+  sourceArea?.addEventListener('scroll',()=>{
+    const high=$('#edit-highlight');if(high){high.scrollTop=sourceArea.scrollTop;high.scrollLeft=sourceArea.scrollLeft;}
+  });
+  function notice(message,kind='info',url='') {
+    let el=$('#ml-edit-notice');if(!el){el=document.createElement('div');el.id='ml-edit-notice';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.append(el);}
+    el.className='ml-edit-notice ml-notice-'+kind;el.replaceChildren();
+    const text=document.createElement('span');text.textContent=message;el.append(text);
+    if(url && /^https:\/\/github\.com\//.test(url)){
+      const link=document.createElement('a');link.textContent='Посмотреть коммит';link.href=url;link.target='_blank';link.rel='noopener noreferrer';el.append(link);
+    }
+    const close=document.createElement('button');close.textContent='×';close.type='button';close.setAttribute('aria-label','Закрыть уведомление');close.onclick=()=>el.remove();el.append(close);
+  }
+  async function verifyMath(source) {
+    if(!window.MLMathTools) throw Error('Проверка LaTeX недоступна — обновите страницу.');
+    const result=await window.MLMathTools.validate(source);
+    return result.count;
+  }
+
   function draftsRead() {
     try {
       const raw=JSON.parse(localStorage.getItem(STORAGE)||'{}'),clean=Object.create(null);
@@ -154,6 +181,7 @@
     return mathQueue;
   }
   function updatePreview() {
+    updateHighlight();
     const el=$('#edit-preview');if(!el)return;
     const directive=foldDirective($('#edit-source').value);
     const html=directive?.kind==='start'
@@ -168,7 +196,10 @@
     }).catch(e=>{console.warn('MathJax preview:',e);});
   }
   let timer=0;
-  $('#edit-source')?.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(updatePreview,280);});
+  $('#edit-source')?.addEventListener('input',()=>{
+    updateHighlight();setStatus('edit-error','');clearTimeout(timer);timer=setTimeout(updatePreview,280);
+    const mathStatus=$('#edit-math-status');if(mathStatus)mathStatus.textContent='Формулы будут проверены перед сохранением.';
+  });
 
   // Every panel is represented by two ordinary source blocks (start / end).
   // Its content is independently editable, and rebuilding the article preserves
@@ -309,11 +340,20 @@
     $('#edit-source').value=add?'':current.blocks[idx].source;
     setStatus('edit-error','');openDialog('edit-dialog');updatePreview();$('#edit-source').focus();
   }
-  function applyChange() {
+  async function applyChange() {
     if(!selected||!current)return false;
     const content=$('#edit-source').value.trim();if(!content){setStatus('edit-error','Текст блока не может быть пустым.',true);return false;}
     const idx=current.blocks.findIndex(b=>b.id===selected.id);
     if(idx<0)return false;
+    const mathStatus=$('#edit-math-status');
+    if(mathStatus)mathStatus.textContent='Проверка формул…';
+    try {
+      const count=await verifyMath(content);
+      if(mathStatus)mathStatus.textContent=count?'Проверено формул: '+count:'Формул в блоке нет';
+    }catch(e){
+      if(mathStatus)mathStatus.textContent='Ошибка LaTeX';
+      setStatus('edit-error',e.message,true);return false;
+    }
     const next=structuredClone(current.blocks);
     if(selected.add){const b={id:makeId(),source:content};next.splice(idx+1,0,b);}
     else next[idx].source=content;
@@ -501,17 +541,20 @@
   function connectDialog() {
     try{MLPublisher.connect();}catch(e){alert(e.message);}
   }
-  async function publishCurrent() {
+  async function publishCurrent(reserved=null) {
     if(!current)return false;
     if(publishing)throw Error('Дождитесь завершения открытой публикации.');
     if(!Object.hasOwn(current,'baseRevision') || current.baseRevision===undefined)
       throw Error('У старого черновика не сохранилась исходная ревизия. Экспортируйте его, откройте актуальную статью и перенесите нужные изменения.');
     const article=current, items=pendingCollections(article.collection);
+    // Validate all visible mathematics before asking GitHub to replace the
+    // source. This is MathJax validation, not a full arbitrary LaTeX compiler.
+    for(const block of article.blocks){await verifyMath(block.source);} 
     const source=serialize(article.blocks,article.collection,true);
     const operation={kind:'article',slug:article.slug,base:article.baseRevision,collection:article.collection,blocks:structuredClone(article.blocks),collections:items};
     policy.operation(operation);publishing=true;
     try{
-      const result=await MLPublisher.open(operation);
+      const result=await MLPublisher.open(operation,reserved);
       article.baseRevision=result.base;article.sourceHasMeta=true;article.sourceExact=source;
       markCollectionsPublished(items);
       const map=draftsRead(),saved=map[article.slug];
@@ -524,7 +567,7 @@
       } else {
         alert('В другой вкладке сохранены новые правки. Они оставлены без изменений; перед следующей публикацией сравните версии.');
       }
-      return true;
+      return result;
     }finally{publishing=false;}
   }
   function exportDraft() {
@@ -540,24 +583,29 @@
   async function publishEdit() {
     if(!selected||!current)return;
     if(!$('#edit-source').value.trim()){setStatus('edit-error','Введите текст.',true);return;}
-    if(!applyChange())return;
+    const reserved=MLPublisher.reserve?.();
+    if(!await applyChange()){MLPublisher.cancelReservation?.(reserved);return;}
     setStatus('edit-error','Отправляю изменения в GitHub…');
+    notice('Проверяю и публикую изменение…');
     try {
-      await publishCurrent();
-      closeDialogs();alert('Изменения сохранены в GitHub. Сайт обновится после выполнения GitHub Actions.');
+      const result=await publishCurrent(reserved);
+      closeDialogs();notice('Изменения сохранены в GitHub. Сайт обновится после сборки.','success',result?.url);
     } catch(e) {
       // Preserve the draft instead of losing what the user typed.
       setStatus('edit-error',e.message,true);
+      MLPublisher.cancelReservation?.(reserved);
+      notice('Не удалось опубликовать: '+e.message,'error');
       // Do not roll back; the local draft is visibly kept.
     }
   }
   async function publishNew() {
     const d=createArticle();if(!d)return;
+    const reserved=MLPublisher.reserve?.();
     try{
-      current=d;await publishCurrent();
-      closeDialogs();alert('Статья отправлена в GitHub. Она появится в библиотеке после сборки.');
+      current=d;const result=await publishCurrent(reserved);
+      closeDialogs();notice('Статья опубликована; появится в каталоге после сборки.','success',result?.url);
       location.href=(location.pathname.includes('/articles/')||location.pathname.includes('/collections/'))?'../index.html':'index.html';
-    } catch(e) {setStatus('new-error',e.message,true);}
+    } catch(e) {MLPublisher.cancelReservation?.(reserved);setStatus('new-error',e.message,true);notice(e.message,'error');}
   }
 
   document.addEventListener('click',async e=>{
@@ -577,10 +625,10 @@
     if(action==='connect')return connectDialog();
     if(action==='export-draft')return exportDraft();
     if(action==='discard-draft')return discardDraft();
-    if(action==='publish-article'){try{await publishCurrent();alert('Коммит сохранён. Сайт обновится после сборки.');}catch(e){alert(e.message);}return;}
+    if(action==='publish-article'){const reserved=MLPublisher.reserve?.();notice('Проверяю и публикую статью…');try{const result=await publishCurrent(reserved);notice('Коммит сохранён; сайт обновится после сборки.','success',result?.url);}catch(e){MLPublisher.cancelReservation?.(reserved);notice('Не удалось опубликовать: '+e.message,'error');}return;}
     if(action==='exit-edit')return switchMode(false);
     if(action==='close-dialog')return closeDialogs();
-    if(action==='save-draft'){if(applyChange()){closeDialogs();alert('Черновик сохранён только в этом браузере. Для синхронизации между устройствами нужно опубликовать его в GitHub.');}return;}
+    if(action==='save-draft'){if(await applyChange()){closeDialogs();notice('Черновик сохранён только в этом браузере.','info');}return;}
     if(action==='publish')return publishEdit();
     if(action==='create-local'){const d=createArticle();if(d)location.href=(location.pathname.includes('/articles/')?'':location.pathname.includes('/collections/')?'../articles/':'articles/')+'draft.html?draft='+encodeURIComponent(d.slug)+'&edit=1';return;}
     if(action==='create-publish')return publishNew();

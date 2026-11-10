@@ -21,7 +21,13 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
     return {sid,key,s,token};
   }
   async function mutation(request) {
-    sameOrigin(request,env);
+    const origin=request.headers.get('Origin');
+    if(origin===env.PUBLISHER_ORIGIN) sameOrigin(request,env);
+    else {
+      assert(origin===env.SITE_ORIGIN,403,'Untrusted request origin');
+      const fetchSite=request.headers.get('Sec-Fetch-Site');
+      assert(!fetchSite || fetchSite==='cross-site' || fetchSite==='same-site',403,'Untrusted request site');
+    }
     const auth=await session(request);
     assert(request.headers.get('X-CSRF-Token')===auth.s.csrf,403,'Invalid CSRF token');
     return auth;
@@ -44,7 +50,11 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
     return redirect(target.href,{'Set-Cookie':setCookie(FLOW,binding,300,'Lax')});
   }
   async function callback(request,url) {
-    assert([...url.searchParams.keys()].every(k=>['code','state','error','error_description','error_uri'].includes(k)) && ['state','code'].every(k=>url.searchParams.getAll(k).length===1),400,'Invalid OAuth callback');
+    assert([...url.searchParams.keys()].every(k=>['code','state','iss','error','error_description','error_uri'].includes(k))
+      && ['state','code'].every(k=>url.searchParams.getAll(k).length===1)
+      && url.searchParams.getAll('iss').length<=1
+      && (!url.searchParams.has('iss') || url.searchParams.get('iss')==='https://github.com/login/oauth'),
+      400,'Invalid OAuth callback');
     const state=url.searchParams.get('state'),code=url.searchParams.get('code'),binding=cookie(request,FLOW);
     assert(TOKEN.test(state||'') && TOKEN.test(binding) && /^[A-Za-z0-9_-]{1,256}$/.test(code||''),400,'Invalid OAuth callback');
     const key='flow:'+await hash(state),bindingHash=await hash(binding);
@@ -70,7 +80,7 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
       await storage.put(sk,{owner:env.GITHUB_OWNER_ID,token:await seal(data.access_token,env,sk),csrf:random(),expires,last:now()});
       // Refresh tokens are intentionally discarded. A session never refreshes itself.
       const headers=new Headers({Location:'/publish'});
-      headers.append('Set-Cookie',setCookie(SID,sid,Math.floor((expires-now())/1000)));
+      headers.append('Set-Cookie',setCookie(SID,sid,Math.floor((expires-now())/1000),'None'));
       headers.append('Set-Cookie',setCookie(FLOW,'',0,'Lax'));accepted=true;
       return new Response(null,{status:303,headers});
     } finally {if(!accepted) await revoke(data.access_token);}
@@ -88,7 +98,16 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
     if(request.method==='GET' && url.pathname==='/auth/callback') return callback(request,url);
     if(url.pathname.startsWith('/api/')) {
       // Fetch Metadata supplements, but never replaces, Origin and CSRF checks.
-      const site=request.headers.get('Sec-Fetch-Site');assert(!site || site==='same-origin',403,'Cross-site API request');
+      const origin=request.headers.get('Origin'),site=request.headers.get('Sec-Fetch-Site');
+      const trustedSite=origin===env.SITE_ORIGIN;
+      assert(!site || site==='same-origin' || (trustedSite && (site==='cross-site'||site==='same-site')),403,'Cross-site API request');
+      if(request.method==='OPTIONS') {
+        assert(trustedSite,403,'Untrusted preflight origin');
+        assert(['POST','GET'].includes(request.headers.get('Access-Control-Request-Method')),403,'Invalid preflight');
+        const names=(request.headers.get('Access-Control-Request-Headers')||'').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
+        assert(names.every(n=>n==='content-type'||n==='x-csrf-token'),403,'Invalid preflight headers');
+        return new Response(null,{status:204,headers:{'Access-Control-Max-Age':'300'}});
+      }
       if(request.method==='GET' && url.pathname==='/api/session') {
         const {s}=await session(request,false);return json({csrf:s.csrf,expires:s.expires});
       }
@@ -126,8 +145,8 @@ export function createApp({env,storage,assets,transport=fetch,now=()=>Date.now()
     throw new HttpError(404,'Not found');
   }
   return async request=>{
-    try{return secure(await route(request));}
-    catch(e){return secure(json({error:e instanceof HttpError?e.message:'The publisher could not complete the request. Your draft is unchanged.'},e instanceof HttpError?e.status:500));}
+    try{return secure(await route(request),request,env);}
+    catch(e){return secure(json({error:e instanceof HttpError?e.message:'The publisher could not complete the request. Your draft is unchanged.'},e instanceof HttpError?e.status:500),request,env);}
   };
 }
 export async function cleanup(storage,now=Date.now()) {

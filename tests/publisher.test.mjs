@@ -10,7 +10,7 @@ test('owner OAuth uses PKCE, exact redirect, repository scope, secure rotated co
   const exchange=h.gh.calls.find(x=>x.url.includes('access_token')).options.body;
   assert.equal(await challenge(exchange.get('code_verifier')),flow.target.searchParams.get('code_challenge'));
   assert.equal(exchange.get('repository_id'),'456');assert.equal(exchange.get('redirect_uri'),h.env.PUBLISHER_ORIGIN+'/auth/callback');
-  for(const c of response.headers.getSetCookie())assert.match(c,/Secure; HttpOnly; SameSite=(Strict|Lax); Path=\//);
+  for(const c of response.headers.getSetCookie())assert.match(c,/Secure; HttpOnly; SameSite=(Strict|Lax|None); Path=\//);
   const stored=JSON.stringify([...h.storage.data]);assert.ok(!stored.includes('test-only-user-token'));assert.ok(!stored.includes('discard-this-test-refresh-token'));
   assert.ok(!JSON.stringify(await (await h.request('/api/session')).json()).includes('token'));
 });
@@ -28,7 +28,7 @@ test('no authenticated API access for anonymous visitors or browser bearer token
 for(const [label,headers] of [['evil Origin',{Origin:'https://evil.example'}],['null Origin',{Origin:'null'}],['missing Origin',{Origin:''}],['missing CSRF',{'X-CSRF-Token':''}],['forged CSRF',{'X-CSRF-Token':'fake'}],['cross-site metadata',{'Sec-Fetch-Site':'cross-site'}]]){
  test('mutation rejects '+label,async()=>{const h=harness();await h.login();const before=h.gh.calls.length;assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers})).status,403);assert.equal(h.gh.calls.length,before);});
 }
-test('CORS and clickjacking headers are restrictive on successes and errors',async()=>{const h=harness();for(const path of ['/publish','/not-found','/api/session']){const r=await h.request(path,{headers:{Origin:'https://evil.example'}});assert.equal(r.headers.get('Access-Control-Allow-Origin'),null);assert.equal(r.headers.get('Cache-Control'),'no-store');assert.equal(r.headers.get('X-Frame-Options'),'DENY');assert.match(r.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);}assert.equal((await h.request('/api/prepare',{method:'OPTIONS'})).status,404);});
+test('CORS and clickjacking headers are restrictive on successes and errors',async()=>{const h=harness();for(const path of ['/publish','/not-found','/api/session']){const r=await h.request(path,{headers:{Origin:'https://evil.example'}});assert.equal(r.headers.get('Access-Control-Allow-Origin'),null);assert.equal(r.headers.get('Cache-Control'),'no-store');assert.equal(r.headers.get('X-Frame-Options'),'DENY');assert.match(r.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);}assert.equal((await h.request('/api/prepare',{method:'OPTIONS'})).status,403);});
 test('logout invalidates cookie replay and revokes GitHub token',async()=>{const h=harness();await h.login();const old=h.cookie;const r=await h.request('/api/logout',{method:'POST',body:{}});assert.equal(r.status,200);h.cookie=old;assert.equal((await h.request('/api/session')).status,401);assert.ok(h.gh.calls.some(x=>x.options.method==='DELETE'));});
 test('session expires after idle and absolute time; GET cannot keep it alive',async()=>{const h=harness();await h.login();h.tick(14*60000);assert.equal((await h.request('/api/session')).status,200);h.tick(60001);assert.equal((await h.prepare(article())).status,401);const second=harness();await second.login();for(let i=0;i<2;i++){second.tick(14*60000);assert.equal((await second.prepare(article())).status,200);}second.tick(2*60000+1);assert.equal((await second.prepare(article())).status,401);});
 test('session cookie duplication and owner configuration change are rejected',async()=>{const h=harness();await h.login();assert.equal((await h.request('/api/session',{headers:{Cookie:h.cookie+'; '+h.cookie}})).status,401);h.env.GITHUB_OWNER_ID='999';assert.equal((await h.request('/api/session')).status,401);});
@@ -61,8 +61,28 @@ test('upstream redirects are rejected without forwarding secrets to another host
   };
   assert.equal((await h.request(flow.path,{headers:{Cookie:flow.binding}})).status,502);
 });
-test('public article origin cannot call privileged mutations',async()=>{
-  const h=harness();await h.login();assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:{Origin:h.env.SITE_ORIGIN}})).status,403);assert.equal(h.gh.commits.length,0);
+test('site-origin mutation needs owner cookie and CSRF, then may publish',async()=>{
+  const h=harness();
+  const site={Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site'};
+  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:site})).status,401);
+  await h.login();
+  assert.equal((await h.request('/api/prepare',{method:'POST',body:article(),headers:{...site,'X-CSRF-Token':'wrong'}})).status,403);
+  const prep=await h.request('/api/prepare',{method:'POST',body:article(),headers:site});
+  assert.equal(prep.status,200);
+  assert.equal(prep.headers.get('Access-Control-Allow-Origin'),h.env.SITE_ORIGIN);
+  assert.equal(prep.headers.get('Access-Control-Allow-Credentials'),'true');
+  const {id}=await prep.json();
+  const done=await h.request('/api/publish',{method:'POST',body:{id},headers:site});
+  assert.equal(done.status,200);assert.equal(h.gh.commits.length,1);
+});
+test('cross-origin preflight is restricted to the configured site and headers',async()=>{
+  const h=harness();
+  const good=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Sec-Fetch-Site':'cross-site','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Content-Type, X-CSRF-Token'}});
+  assert.equal(good.status,204);assert.equal(good.headers.get('Access-Control-Allow-Origin'),h.env.SITE_ORIGIN);
+  const evil=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:'https://evil.example','Access-Control-Request-Method':'POST'}});
+  assert.equal(evil.status,403);assert.equal(evil.headers.get('Access-Control-Allow-Origin'),null);
+  const injection=await h.request('/api/prepare',{method:'OPTIONS',headers:{Origin:h.env.SITE_ORIGIN,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'Authorization'}});
+  assert.equal(injection.status,403);
 });
 test('revoked GitHub token blocks confirmation even with a live local session',async()=>{
   const h=harness();await h.login();const {id}=await (await h.prepare(article())).json();h.gh.expired=true;assert.equal((await h.publish(id)).status,401);assert.equal(h.gh.commits.length,0);

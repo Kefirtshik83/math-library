@@ -55,13 +55,22 @@ export async function unseal(value,env,context) {
   return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(value.iv),additionalData:new TextEncoder().encode(context)},await key(env),new Uint8Array(value.data)));
 }
 export function json(value,status=200,headers={}) {return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8',...headers}});}
-export function secure(response) {
+export function secure(response,request=null,env=null) {
   const h=new Headers(response.headers);
-  h.set('Cache-Control','no-store');h.set('Pragma','no-cache');h.set('Referrer-Policy','no-referrer');
+  h.set('Cache-Control','no-store');h.set('Pragma','no-cache');h.set('Referrer-Policy','same-origin');
   h.set('X-Content-Type-Options','nosniff');h.set('X-Frame-Options','DENY');
   h.set('Strict-Transport-Security','max-age=31536000');
   h.set('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');
   h.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'self' https://github.com; frame-ancestors 'none'; object-src 'none'");
-  // No CORS. This origin alone may read or mutate authenticated state.
+  // No wildcard origins and no exposure of GitHub credentials. Only the
+  // configured static site can use the owner session from another origin.
+  if(request && env && new URL(request.url).pathname.startsWith('/api/') &&
+     request.headers.get('Origin')===env.SITE_ORIGIN) {
+    h.set('Access-Control-Allow-Origin',env.SITE_ORIGIN);
+    h.set('Access-Control-Allow-Credentials','true');
+    h.set('Vary','Origin');
+    h.set('Access-Control-Allow-Headers','Content-Type, X-CSRF-Token');
+    h.set('Access-Control-Allow-Methods','GET, POST, OPTIONS');
+  }
   return new Response(response.body,{status:response.status,headers:h});
 }

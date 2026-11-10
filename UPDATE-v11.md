@@ -1,0 +1,1 @@
+Install private Worker ZIP first, then this public site ZIP. Do not upload article/notes/collection files. No secrets included. See the assistant instructions.

@@ -69,7 +69,21 @@
   tablet.addEventListener?.('change',updateDesktopButtons);
   updateDesktopButtons();
 
-  const progress = document.querySelector('.progress');
+  // Only genuinely oversized inline formulas scroll; normal symbols such as
+  // \varphi are ordinary inline text with no visible scrollbar underneath.
+  function sizeInlineMath() {
+    document.querySelectorAll('.article-body .math.inline').forEach(el=>{
+      el.classList.remove('ml-wide-math');
+      const math=el.querySelector('mjx-container');
+      if(!math)return;
+      const available=Math.max(1,Math.min(document.documentElement.clientWidth-32,el.parentElement?.clientWidth||1000));
+      if(math.getBoundingClientRect().width>available+2)el.classList.add('ml-wide-math');
+    });
+  }
+  window.addEventListener('resize',sizeInlineMath);
+  if(window.MathJax?.startup?.promise)window.MathJax.startup.promise.then(sizeInlineMath).catch(()=>{});
+  document.addEventListener('ml-math-rendered',sizeInlineMath);
+    const progress = document.querySelector('.progress');
   if (progress) {
     let scheduled = false;
     const update = () => {

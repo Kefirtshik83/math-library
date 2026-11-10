@@ -5,7 +5,7 @@ import shutil
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = ['index.html', 'collections.json', 'site-config.json',
           'assets/styles.css', 'assets/site.js', 'assets/editor.js', 'assets/publisher.js',
-          'assets/content-policy.js', 'assets/mathjax-config.js',
+          'assets/content-policy.js', 'assets/mathjax-config.js', 'assets/math-tools.js',
           'assets/vendor/mathjax-tex-svg.js', 'assets/vendor/dompurify.min.js']
 
 def package(root=ROOT):

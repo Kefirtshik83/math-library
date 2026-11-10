@@ -383,3 +383,55 @@ body.rail-left-hidden .collection-rail{display:none}
 /* Publishing controls remain usable on narrow screens. */
 #edit-toolbar{flex-wrap:wrap;justify-content:center;white-space:normal}
 @media(max-width:700px){#edit-toolbar{width:calc(100% - 20px);bottom:8px;gap:5px;padding:7px}#edit-toolbar button{padding:6px 8px}.editor-pill{width:100%;text-align:center}}
+
+/* v11: reading comfort and mobile math -- inline symbols are not scrollboxes. */
+html {-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media(max-width:750px){
+ .article-body .math.inline:not(.ml-wide-math){display:inline;overflow:visible;white-space:normal;max-width:none;vertical-align:baseline}
+ .article-body .math.inline.ml-wide-math{display:inline-block;max-width:100%;overflow-x:auto;overflow-y:hidden;vertical-align:middle;scrollbar-width:thin}
+ .article-body .math.inline:not(.ml-wide-math)>mjx-container{max-width:none}
+}
+/* Use additional horizontal space after either navigation panel is hidden. */
+@media(min-width:1200px){
+ body.rail-left-hidden .article-grid > .main-column,
+ body.rail-right-hidden .article-grid > .main-column {max-width:1120px}
+ body.rail-left-hidden.rail-right-hidden .article-grid > .main-column {max-width:1260px}
+ body.rail-left-hidden .article-grid > .main-column,
+ body.rail-right-hidden .article-grid > .main-column {padding-inline:clamp(45px,5vw,83px)}
+ body.rail-left-hidden.rail-right-hidden .article-title{max-width:1000px}
+}
+/* v11: syntax-colored source, with textarea remaining the only editable control. */
+.source-editor{position:relative;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card);color:var(--ink)}
+.source-editor #edit-highlight,.source-editor #edit-source{
+ font-family:var(--mono);font-size:13px;line-height:1.65;letter-spacing:0;tab-size:2;
+ box-sizing:border-box;margin:0;padding:14px 15px;width:100%;min-height:250px;
+ white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;font-variant-ligatures:none;
+}
+.source-editor #edit-highlight{
+ position:absolute;inset:0;height:100%;overflow:hidden;pointer-events:none;user-select:none;
+ background:transparent;white-space:pre-wrap;z-index:0;border:0;
+}
+#edit-dialog .source-editor #edit-source{
+ display:block;position:relative;z-index:1;background:transparent;color:transparent;
+ caret-color:var(--ink);border:0;border-radius:0;resize:vertical;outline-offset:-3px;
+ min-height:250px;max-height:50vh;overflow:auto;
+}
+#edit-dialog .source-editor #edit-source::selection{background:#8dc5df;color:#11232e}
+.source-editor .tex-command{color:#1c64ac;font-weight:600}
+.source-editor .tex-brace{color:#ad5b26}
+.source-editor .tex-script{color:#a13c79}
+.source-editor .math-delimiter{color:#157c65;font-weight:700}
+.source-editor .md-heading{color:#a03f38;font-weight:650}
+.source-editor .tex-comment,.source-editor .md-comment{color:#738284;font-style:italic}
+[data-theme="dark"] .source-editor .tex-command{color:#83c4ff}
+[data-theme="dark"] .source-editor .tex-brace{color:#ffb56f}
+[data-theme="dark"] .source-editor .tex-script{color:#ed9bc9}
+[data-theme="dark"] .source-editor .math-delimiter{color:#8bdfc5}
+[data-theme="dark"] .source-editor .md-heading{color:#ff9e8c}
+[data-theme="dark"] .source-editor .tex-comment,[data-theme="dark"] .source-editor .md-comment{color:#87979c}
+#edit-math-status{margin:8px 0 0;font:12px/1.45 var(--sans);color:var(--muted)}
+.ml-edit-notice{position:fixed;z-index:1200;right:18px;bottom:88px;max-width:min(560px,calc(100vw - 36px));display:flex;gap:12px;align-items:center;justify-content:space-between;padding:13px 16px;border:1px solid var(--line);border-left:4px solid var(--accent);background:var(--paper);color:var(--ink);border-radius:10px;box-shadow:0 8px 32px #0003;font:13px/1.5 var(--sans)}
+.ml-edit-notice a{font-weight:650;white-space:nowrap;color:var(--accent)}
+.ml-edit-notice button{flex:none;border:0;background:none;color:var(--muted);font:22px/1 var(--sans);cursor:pointer}
+.ml-notice-success{border-left-color:#4c976b}.ml-notice-error{border-left-color:#c04a4a}
+@media(max-width:620px){.ml-edit-notice{left:12px;right:12px;bottom:74px}}
