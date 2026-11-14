@@ -1,0 +1,24 @@
+/* Consistent mathematical blocks for all notes. Historical .theorem/.lemma remain unchanged. */
+.article-body .definition,
+.article-body .proposition,
+.article-body .corollary,
+.article-body .statement {
+  border: 1px solid var(--theorem-border);
+  background: var(--theorem);
+  padding: 20px 24px 7px;
+  margin: 25px 0 29px;
+  border-radius: 4px;
+}
+.article-body .definition { background: var(--card); border-left: 4px solid var(--theorem-border); }
+.article-body .corollary { border-left: 3px solid var(--theorem-border); }
+.article-body .exercise { border-left: 3px solid var(--accent); padding: 8px 20px 1px; margin: 25px 0 27px; }
+.article-body .example { border-left: 2px solid var(--theorem-border); padding: 8px 20px 1px; margin: 24px 0; }
+.article-body .remark { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px 0 6px; margin: 24px 0 29px; color: var(--muted); font-size: 16.5px; }
+.article-body :is(.definition, .proposition, .corollary, .statement, .exercise, .example) > p:first-child > strong:first-child { color: var(--deep); font-weight: 700; }
+.article-body :is(.definition, .proposition, .corollary, .statement, .exercise, .example) > :last-child { margin-bottom: 0.9em; }
+@media (max-width: 700px) {
+  .article-body :is(.definition, .proposition, .corollary, .statement) {padding: 15px 17px 5px;}
+  .article-body :is(.exercise, .example) {padding-left: 13px; padding-right: 5px;}
+}
+
+.article-body img { display: block; max-width: 100%; height: auto; margin: 20px auto 8px; }

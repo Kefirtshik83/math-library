@@ -7,7 +7,6 @@ import html, json, re, subprocess, uuid, hashlib
 from urllib.parse import urlsplit
 from content_safety import sanitize, validate_blocks, validate_collections, slug as safe_slug, MAX_BYTES
 from pathlib import Path
-
 ROOT = Path(__file__).resolve().parent
 NOTES = ROOT / 'notes'
 OUT = ROOT / 'articles'
@@ -23,7 +22,13 @@ if PUBLISHER:
 MARKER_RE = re.compile(r'^<!-- ml:block:([a-zA-Z0-9_-]+) -->\s*\n', re.M)
 FOLD_START = re.compile(r'^<!-- ml:fold-start title="([^"]+)" open="(true|false)" -->$')
 FOLD_END = '<!-- ml:fold-end -->'
+# Metadata is stored in an ordinary editable block, not in an external manifest.
+# The exact standalone marker is intentionally stripped by Pandoc during rendering.
+UNLISTED_MARKER = '<!-- ml:unlisted -->'
 
+def is_unlisted(blocks: list[dict]) -> bool:
+    """Unlisted pages have URLs and source editing, but do not enter catalogs."""
+    return any(UNLISTED_MARKER in b['source'].splitlines() for b in blocks)
 
 def fold_directive(source: str):
     value = source.strip()
@@ -31,7 +36,6 @@ def fold_directive(source: str):
     m = FOLD_START.fullmatch(value)
     if m: return ('start', m.group(1), m.group(2) == 'true')
     return None
-
 
 def fold_open(block_id: str, title: str, opened: bool) -> str:
     title = html.escape(title)
@@ -45,7 +49,6 @@ def fold_open(block_id: str, title: str, opened: bool) -> str:
             f'<button type="button" data-add-after="{bid}" title="Добавить внутрь">＋</button>'
             f'<button type="button" data-copy-link="{bid}" title="Ссылка">↗</button></span></summary>'
             '<div class="proof-fold-body">')
-
 
 def validate_folds(blocks: list[dict]) -> None:
     validate_blocks(blocks)
@@ -64,12 +67,9 @@ def validate_folds(blocks: list[dict]) -> None:
             stack.pop()
     if stack: raise ValueError('Panel not closed: '+', '.join(stack))
 
-
-
 def slugify(s: str) -> str:
     s = re.sub(r'[^a-zA-Z0-9-]+', '-', s.lower()).strip('-')
     return s or ('article-' + uuid.uuid4().hex[:8])
-
 
 def split_unmarked(text: str) -> list[str]:
     """Paragraph-like blocks; fenced divs remain one editable block."""
@@ -104,7 +104,6 @@ def split_unmarked(text: str) -> list[str]:
     flush()
     return chunks
 
-
 def annotate_if_needed(path: Path) -> tuple[list[dict],str,bool]:
     safe_slug(path.stem)
     if path.is_symlink() or not path.is_file() or path.stat().st_size>MAX_BYTES: raise ValueError('Invalid note file')
@@ -125,7 +124,6 @@ def annotate_if_needed(path: Path) -> tuple[list[dict],str,bool]:
     path.write_text(prefix+''.join(f'<!-- ml:block:{b["id"]} -->\n{b["source"]}\n\n' for b in result),encoding='utf-8')
     return result,collection_id,has_meta
 
-
 def load_collections() -> list[dict]:
     if COLLECTIONS_FILE.is_symlink() or COLLECTIONS_FILE.stat().st_size>MAX_BYTES: raise ValueError('Invalid collections file')
     items=json.loads(COLLECTIONS_FILE.read_text(encoding='utf-8'))
@@ -143,10 +141,9 @@ def load_collections() -> list[dict]:
         if parent and parent not in ids: raise ValueError('Unknown parent collection: '+parent)
         by_id={x['id']:x for x in items}
         while parent:
-            if parent in seen:raise ValueError('Cycle in collection tree')
+            if parent in seen: raise ValueError('Cycle in collection tree')
             seen.add(parent);parent=by_id[parent].get('parent')
     return sorted(items,key=lambda c:(c.get('order',999),c['title'].casefold()))
-
 
 def esc(s) -> str: return html.escape(str(s),quote=True)
 
@@ -160,7 +157,6 @@ def ancestor_chain(cid: str, by_id: dict) -> list[dict]:
         c=by_id[cid];a.append(c);cid=c.get('parent')
     return a[::-1]
 
-
 def collection_tree(collections: list[dict], selected: str='', base: str='') -> str:
     ids={x['id']:x for x in collections}
     children={None:[]}
@@ -171,13 +167,11 @@ def collection_tree(collections: list[dict], selected: str='', base: str='') -> 
            + render(c['id'],level+1) for c in children.get(parent,[]))
     return render(None)
 
-
 def breadcrumb(cid: str, by_id: dict, base='../') -> str:
     items=['<a href="'+base+'index.html">Заметки</a>']
     for c in ancestor_chain(cid,by_id):
         items+=['<span class="sep">/</span>','<a href="'+esc(col_path(c['id'],base))+'">'+esc(c['title'])+'</a>']
     return ''.join(items)
-
 
 def article_list(records: list[dict], base: str='') -> str:
     if not records:return '<p class="empty-collection">В этом разделе пока нет статей.</p>'
@@ -187,13 +181,11 @@ def article_list(records: list[dict], base: str='') -> str:
                        f'<p class="essay-desc">{esc(r.get("description") or "Математический текст")}</p></div><div class="essay-index">{i:02}</div></div>')
     return ''.join(entries)
 
-
 def pandoc(source: str) -> str:
     p = subprocess.run(['pandoc', '-f', 'markdown+tex_math_dollars+tex_math_single_backslash+fenced_divs-raw_html-raw_attribute+auto_identifiers',
                         '-t','html5','--mathjax','--wrap=none'], input=source, text=True,
                        capture_output=True, check=True, timeout=15)
     return sanitize(p.stdout.strip())
-
 
 def fold_proof(markup: str) -> str:
     if not re.match(r'<div\b[^>]*\bclass="[^"]*\bproof\b', markup): return markup
@@ -201,13 +193,12 @@ def fold_proof(markup: str) -> str:
     last = markup.rfind('</div>')
     if last < first: return markup
     inner = markup[first:last]
-    return ('<details class="proof-fold lemma-fold" open>'
+    return ('<details class="proof-fold lemma-fold">'
             '<summary class="proof-fold-summary"><span class="proof-fold-title">Доказательство</span>'
             '<span class="proof-fold-toggle"><span class="when-open">Скрыть доказательство</span>'
             '<span class="when-closed">Показать доказательство</span>'
             '<span class="fold-chevron" aria-hidden="true"></span></span></summary>'
             '<div class="proof-fold-body">' + inner + '</div></details>')
-
 
 def block_html(block: dict) -> str:
     rendered = fold_proof(pandoc(block['source']))
@@ -218,10 +209,8 @@ def block_html(block: dict) -> str:
             f'<button type="button" data-copy-link="{block["id"]}" title="Скопировать ссылку на блок">↗</button>'
             '</div>' + rendered + '</div>')
 
-
 def js_json(value) -> str:
     return json.dumps(value, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
-
 
 def page(title: str, body: str, base: str = '', collections=None, active_collection: str = '') -> str:
     css = (ASSET/'styles.css').read_text(encoding='utf-8')
@@ -232,6 +221,7 @@ def page(title: str, body: str, base: str = '', collections=None, active_collect
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;650;700&family=STIX+Two+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{css}</style>
+<link rel="stylesheet" href="{base}assets/math-blocks.css">
 <script defer src="{base}assets/mathjax-config.js"></script>
 <script defer src="{base}assets/vendor/mathjax-tex-svg.js"></script>
 <script defer src="{base}assets/site.js"></script>
@@ -251,7 +241,7 @@ def page(title: str, body: str, base: str = '', collections=None, active_collect
 <!-- Credentials stay on the separate publisher origin. -->
 <div id="edit-toolbar" hidden><span class="editor-pill">✎ Режим редактирования · v12</span><button type="button" data-action="new-article">＋ Статья</button><button type="button" data-action="new-collection">＋ Раздел</button><button type="button" data-action="publish-article">Опубликовать</button><button type="button" data-action="export-draft">Экспорт</button><button type="button" data-action="discard-draft">Сбросить черновик</button><button type="button" data-action="connect">Войти / выйти</button><button type="button" data-action="exit-edit">Готово</button></div>
 <dialog id="insert-dialog"><div class="editor-modal-head"><h2>Добавить блок</h2><button type="button" class="x-close" data-action="close-dialog">×</button></div>
-<label for="insert-type">Тип нового блока</label><select id="insert-type"><option value="text">Обычный текст или формула</option><option value="theorem">Теорема</option><option value="lemma">Лемма</option><option value="proof">Сворачиваемое доказательство</option><option value="fold">Сворачиваемая плашка с любым содержимым</option><option value="link">Ссылка на отдельную статью / доказательство</option></select>
+<label for="insert-type">Тип нового блока</label><select id="insert-type"><option value="text">Обычный текст или формула</option><option value="theorem">Теорема</option><option value="lemma">Лемма</option><option value="proposition">Предложение</option><option value="corollary">Следствие</option><option value="definition">Определение</option><option value="statement">Утверждение</option><option value="exercise">Задача</option><option value="example">Пример</option><option value="remark">Замечание</option><option value="proof">Сворачиваемое доказательство</option><option value="solution">Сворачиваемое решение</option><option value="fold">Сворачиваемая плашка с любым содержимым</option><option value="link">Ссылка на отдельную статью / доказательство</option></select>
 <div id="insert-options" hidden><label for="insert-title">Название плашки или ссылка</label><input id="insert-title" value="Подробности"><div id="insert-link-options" hidden><label for="insert-slug">Адрес статьи (латиницей)</label><input id="insert-slug" placeholder="proof-of-main-theorem"><p class="editor-note">Ссылка ведёт на отдельную статью. Создать её можно кнопкой «＋ Статья».</p></div><label id="insert-open-label"><input id="insert-open" type="checkbox" checked> Изначально раскрыта</label></div>
 <p class="editor-note">В раскрывающейся плашке можно вставлять и редактировать обычные блоки, теоремы, формулы и даже другие плашки.</p><p id="insert-error" role="status"></p><div class="editor-actions"><button type="button" data-action="close-dialog">Отмена</button><button class="primary-editor" type="button" data-action="insert-block">Добавить</button></div></dialog>
 <dialog id="edit-dialog"><form method="dialog" id="edit-form"><div class="editor-modal-head"><h2 id="edit-dialog-title">Edit block</h2><button type="button" class="x-close" data-action="close-dialog" aria-label="Закрыть">×</button></div><p id="edit-hint"></p><label for="edit-source">Математический исходный текст (Markdown + LaTeX)</label><div class="source-editor"><pre id="edit-highlight" aria-hidden="true"></pre><textarea id="edit-source" spellcheck="false" rows="13" aria-label="Markdown и LaTeX исходный текст"></textarea></div><p id="edit-math-status" role="status">LaTeX проверяется при сохранении.</p><p class="editor-preview-label">Предпросмотр (упрощённый; окончательный HTML строится Pandoc)</p><div id="edit-preview" class="article-body" aria-live="polite"></div><p id="edit-error" role="status"></p><div class="editor-actions"><button type="button" data-action="delete-block" class="editor-delete">Удалить блок</button><button type="button" data-action="save-draft">Сохранить черновик</button><button type="button" class="primary-editor" data-action="publish">Опубликовать в GitHub</button></div></form></dialog>
@@ -262,13 +252,11 @@ def page(title: str, body: str, base: str = '', collections=None, active_collect
 <label for="collection-parent">Расположение</label><select id="collection-parent"></select>
 <label for="collection-description">Краткое описание (необязательно)</label><textarea id="collection-description" rows="3" placeholder="Что будет в этом разделе"></textarea>
 <p id="collection-error" role="status"></p><div class="editor-actions"><button type="button" data-action="create-collection-local">Сохранить на этом устройстве</button><button class="primary-editor" type="button" data-action="create-collection-publish">Создать и опубликовать</button></div></dialog>
-
 </body></html>'''
 
 
 def display_with_legacy_folds(slug: str, blocks: list[dict]) -> list[dict]:
     """Render old pre-v7 notes with fold panels without altering their sources.
-
     The browser editor already migrates these on the first local edit. We must
     leave its source JSON unchanged so the GitHub SHA/content check is accurate.
     """
@@ -287,7 +275,6 @@ def display_with_legacy_folds(slug: str, blocks: list[dict]) -> list[dict]:
         elif b['id']=='b060':out.insert(-1,{'id':'foldgeoend','source':'<!-- ml:fold-end -->'})
     validate_folds(out)
     return out
-
 
 def build_article(slug: str, blocks: list[dict], collection_id: str, has_meta: bool,
                   collections: list[dict], records: list[dict]) -> None:
@@ -314,16 +301,19 @@ def build_article(slug: str, blocks: list[dict], collection_id: str, has_meta: b
               'path':f'notes/{slug}.md','blocks':blocks}
     in_category=[r for r in records if r['collection']==collection_id and r['slug']!=slug]
     related=''.join('<a class="rail-link" href="'+esc(r['slug'])+'.html">'+esc(r['title'])+'</a>' for r in in_category[:15])
+    # Supplementary pages are not entries in the article navigation, not even
+    # while viewing one of those pages. Their main article remains listed.
+    current=('' if is_unlisted(blocks) else
+             '<a class="rail-link selected" href="'+esc(slug)+'.html">'+esc(title)+'</a>')
     side=collection_tree(collections,collection_id,'../')
     page_body=f'''<div class="article-grid">
 <aside id="left-navigation" class="left-rail" aria-label="Разделы сайта"><div class="left-rail-sticky"><div class="rail-title">Разделы</div>{side}
-<div class="rail-title rail-subheading">В этом разделе</div><a class="rail-link selected" href="{esc(slug)}.html">{esc(title)}</a>{related}</div></aside>
+<div class="rail-title rail-subheading">В этом разделе</div>{current}{related}</div></aside>
 <main class="main-column"><div class="breadcrumb">{breadcrumb(collection_id,by_id)}</div>
 <div class="article-body article-editable" id="article-content">{''.join(result)}</div><div class="article-bottom"><a href="../notes/{esc(slug)}.md">Исходный Markdown</a></div></main>
 <aside id="right-navigation" class="right-rail" aria-label="Оглавление статьи"><div class="right-rail-sticky"><div class="rail-title">На этой странице</div><nav class="right-toc">{toc}</nav></div></aside></div>
 <script id="ml-article-data" type="application/json">{js_json(raw_data)}</script>'''
     (OUT/f'{slug}.html').write_text(page(title,page_body,'../',collections,collection_id),encoding='utf-8')
-
 
 def build_collection_pages(collections: list[dict], records: list[dict]) -> None:
     COLL_OUT.mkdir(parents=True,exist_ok=True)
@@ -340,7 +330,6 @@ def build_collection_pages(collections: list[dict], records: list[dict]) -> None
 <div id="local-drafts"></div><div id="local-collections"></div>
 </main></div>'''
         (COLL_OUT/f'{c["id"]}.html').write_text(page(c['title'],body,'../',collections,c['id']),encoding='utf-8')
-
 
 def build_home(records: list[dict],collections: list[dict]) -> None:
     roots=[c for c in collections if not c.get('parent')]
@@ -362,11 +351,9 @@ def build_home(records: list[dict],collections: list[dict]) -> None:
 <div class="collection-cards">{cards}</div><div id="local-drafts"></div><div id="local-collections"></div></main>'''
     (ROOT/'index.html').write_text(page('Заметки',body,'',collections),encoding='utf-8')
 
-
 def build_draft_template(collections: list[dict]):
     body = '''<div class="article-grid"><aside id="left-navigation" class="left-rail" aria-label="Разделы сайта"><div class="left-rail-sticky"><div class="rail-title">Черновик</div><a class="rail-link" href="../index.html">← К каталогу</a></div></aside><main class="main-column"><div class="breadcrumb"><a href="../index.html">Заметки</a><span class="sep">/</span>Локальный черновик</div><div class="article-body article-editable" id="article-content"></div></main><aside id="right-navigation" class="right-rail" aria-label="Оглавление статьи"><div class="right-rail-sticky"><div class="rail-title">На этой странице</div><div class="right-toc">Новая статья</div></div></aside></div>'''
     (OUT/'draft.html').write_text(page('Черновик',body,'../',collections), encoding='utf-8')
-
 
 def main():
     if NOTES.is_symlink() or not NOTES.is_dir(): raise ValueError('notes must be a real directory')
@@ -377,8 +364,9 @@ def main():
         if file.name.startswith('_'):continue
         blocks,cid,has_meta=annotate_if_needed(file)
         sources.append((file.stem,blocks,cid,has_meta))
-        title=re.sub(r'^#\s+', '',blocks[0]['source'].splitlines()[0]).strip() if blocks else file.stem
-        records.append({'slug':file.stem,'title':title,'collection':cid})
+        if not is_unlisted(blocks):
+            title=re.sub(r'^#\s+', '',blocks[0]['source'].splitlines()[0]).strip() if blocks else file.stem
+            records.append({'slug':file.stem,'title':title,'collection':cid})
     for slug,blocks,cid,has_meta in sources:
         build_article(slug,blocks,cid,has_meta,collections,records)
     # Remove HTML for articles no longer in the sources.
@@ -391,6 +379,5 @@ def main():
         if f.name not in valid_cols:f.unlink()
     build_home(records,collections)
     build_draft_template(collections)
-    print(f'Built {len(records)} article(s), {len(collections)} collection(s), and homepage')
-
+    print(f'Built {len(records)} listed article(s), {len(sources)-len(records)} supplementary page(s), {len(collections)} collection(s), and homepage')
 if __name__ == '__main__':main()
