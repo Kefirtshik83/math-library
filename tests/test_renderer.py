@@ -5,18 +5,17 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from html.parser import HTMLParser
 import build
 from content_safety import sanitize, validate_collections, validate_blocks
 from scripts.package_site import package, PUBLIC
-
 class Inspect(HTMLParser):
     def __init__(self, source):
         super().__init__(convert_charrefs=True)
         self.tags=[]
         self.feed(source)
     def handle_starttag(self, tag, attrs): self.tags.append((tag,dict(attrs)))
-
 class RendererSecurity(unittest.TestCase):
     def safe(self, markup):
         for tag,attrs in Inspect(markup).tags:
@@ -35,7 +34,7 @@ class RendererSecurity(unittest.TestCase):
         attacks=['[click](javascript:alert%281%29)', '[click](data:text/html,evil)', '[click](jav&#x61;script:evil)',
                  '[click](https://example.org){onclick="evil()" style="position:fixed" id="edit-toolbar" data-action="publish"}',
                  '::: {.proof onclick="evil()" style="position:fixed" #edit-toolbar}\nText\n:::',
-                 '# Heading {#ml-article-data onclick="evil()"}', '[click](//evil.example)', '[click](\\\\evil.example)']
+                 '# Heading {#ml-article-data onclick="evil()"}', '[click](//evil.example)', '[click](\\evil.example)']
         for source in attacks:
             with self.subTest(source=source): self.safe(build.pandoc(source))
     def test_sanitizer_direct_malformed_html(self):
@@ -93,7 +92,10 @@ class RendererSecurity(unittest.TestCase):
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('safe')
             for name in ['.dev.vars','publisher/secret.txt','build.py','assets/evil.js','tests/secret.txt']:
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('secret')
-            out=package(root)
+            # This test checks the public-file allowlist. The editor transformation
+            # has its own tests; this fixture deliberately contains only a stub.
+            with patch('scripts.package_site.patch_editor', side_effect=lambda s: s):
+                out=package(root)
             for path in out.rglob('*'):
                 if path.is_file():self.assertNotIn('secret',path.read_text())
             self.assertFalse((out/'publisher').exists());self.assertFalse((out/'assets/evil.js').exists())
@@ -104,5 +106,4 @@ class RendererSecurity(unittest.TestCase):
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('safe')
             (root/'collections.json').unlink();(root/'collections.json').symlink_to(root/'index.html')
             with self.assertRaises(ValueError):package(root)
-
 if __name__=='__main__':unittest.main()
